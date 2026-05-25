@@ -30,7 +30,12 @@ export default function Notifications() {
   const loadNotifications = async () => {
     const notifications: Notification[] = []
     const today = new Date().toISOString().split('T')[0]
-    const now = new Date().toTimeString().split(' ')[0].substring(0, 5)
+    const now = new Date()
+    
+    // Hora actual en formato HH:mm
+    const currentHour = now.getHours()
+    const currentMinute = now.getMinutes()
+    const nowTime = `${currentHour.toString().padStart(2, '0')}:${currentMinute.toString().padStart(2, '0')}`
 
     // Verificar rol del usuario
     const { data: { user } } = await supabase.auth.getUser()
@@ -45,7 +50,7 @@ export default function Notifications() {
     // Citas próximas (próximas 2 horas)
     const twoHoursLater = new Date()
     twoHoursLater.setHours(twoHoursLater.getHours() + 2)
-    const twoHoursTime = twoHoursLater.toTimeString().split(' ')[0].substring(0, 5)
+    const twoHoursTime = `${twoHoursLater.getHours().toString().padStart(2, '0')}:${twoHoursLater.getMinutes().toString().padStart(2, '0')}`
 
     let appointmentsQuery = supabase
       .from('appointments')
@@ -55,8 +60,9 @@ export default function Notifications() {
         services(name)
       `)
       .eq('appointment_date', today)
-      .gte('appointment_time', now)
+      .gte('appointment_time', nowTime)
       .lte('appointment_time', twoHoursTime)
+      .eq('status', 'pendiente')
 
     // Si es estilista, solo sus citas
     if (profile?.role === 'estilista') {
@@ -78,21 +84,24 @@ export default function Notifications() {
 
     // Stock bajo (solo admin y cajero)
     if (profile?.role !== 'estilista') {
-      const { data: lowStock } = await supabase
+      const { data: inventory } = await supabase
         .from('inventory')
         .select('product_name, current_quantity, min_quantity')
-        .lte('current_quantity', supabase.rpc('min_quantity'))
 
-      const lowStockItems = lowStock?.filter(item => item.current_quantity <= item.min_quantity) || []
+      const lowStockItems = inventory?.filter(item => 
+        item.current_quantity <= item.min_quantity
+      ) || []
 
       if (lowStockItems.length > 0) {
-        notifications.push({
-          id: 'stock-alert',
-          type: 'stock',
-          title: 'Stock Bajo',
-          message: `${lowStockItems.length} producto${lowStockItems.length > 1 ? 's' : ''} con stock bajo`,
-          time: new Date(),
-          read: false
+        lowStockItems.forEach(item => {
+          notifications.push({
+            id: `stock-${item.product_name}`,
+            type: 'stock',
+            title: 'Stock Bajo',
+            message: `${item.product_name}: ${item.current_quantity} unidades (mín: ${item.min_quantity})`,
+            time: new Date(),
+            read: false
+          })
         })
       }
     }
@@ -124,12 +133,12 @@ export default function Notifications() {
       {/* Botón de notificaciones */}
       <button
         onClick={() => setShowPanel(!showPanel)}
-        className="relative p-2 rounded-lg hover:bg-gray-100 transition-colors"
+        className="relative p-2 rounded-lg hover:bg-white/10 transition-colors"
       >
-        <Bell className="w-6 h-6 text-gray-700" />
+        <Bell className="w-6 h-6 text-white" />
         {unreadCount > 0 && (
-          <span className="absolute top-0 right-0 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold">
-            {unreadCount}
+          <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold">
+            {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}
       </button>
@@ -146,7 +155,7 @@ export default function Notifications() {
           {/* Panel */}
           <div className="absolute right-0 top-12 w-96 bg-white rounded-xl shadow-2xl border border-gray-200 z-50 max-h-[500px] overflow-hidden flex flex-col">
             <div className="p-4 border-b border-gray-200">
-              <h3 className="font-bold text-lg">Notificaciones</h3>
+              <h3 className="font-bold text-lg text-gray-900">Notificaciones</h3>
               <p className="text-sm text-gray-600">
                 {unreadCount} sin leer
               </p>
