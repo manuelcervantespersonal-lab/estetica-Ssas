@@ -5,13 +5,12 @@ import { createClient } from '@/lib/supabase'
 import { Button } from '@/app/components/ui/button'
 import { Input } from '@/app/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card'
-import { Plus, TrendingUp, TrendingDown, DollarSign, Calendar } from 'lucide-react'
+import { Plus, TrendingUp, TrendingDown, DollarSign, FileDown } from 'lucide-react'
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns'
 import { es } from 'date-fns/locale'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
-import { FileDown } from 'lucide-react'
 
 interface Payment {
   id: string
@@ -41,10 +40,8 @@ interface MonthlyData {
 export default function FinancesPage() {
   const [payments, setPayments] = useState<Payment[]>([])
   const [expenses, setExpenses] = useState<Expense[]>([])
-  const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [showExpenseModal, setShowExpenseModal] = useState(false)
   const [selectedMonth, setSelectedMonth] = useState(new Date())
-  
   const [monthlyData, setMonthlyData] = useState<MonthlyData[]>([])
   const [categoryData, setCategoryData] = useState<any[]>([])
 
@@ -78,7 +75,6 @@ export default function FinancesPage() {
   }
 
   const loadChartData = async () => {
-    // Datos de los últimos 6 meses
     const months: MonthlyData[] = []
     
     for (let i = 5; i >= 0; i--) {
@@ -108,147 +104,9 @@ export default function FinancesPage() {
         balance: ingresos - gastos
       })
     }
-    const generatePDF = () => {
-  const doc = new jsPDF()
-  
-  // Configuración
-  const pageWidth = doc.internal.pageSize.getWidth()
-  const pageHeight = doc.internal.pageSize.getHeight()
-  
-  // Header
-  doc.setFillColor(139, 92, 246) // Color primary
-  doc.rect(0, 0, pageWidth, 40, 'F')
-  
-  doc.setTextColor(255, 255, 255)
-  doc.setFontSize(24)
-  doc.text('Estética Pro', 20, 20)
-  
-  doc.setFontSize(14)
-  doc.text('Reporte Financiero', 20, 30)
-  
-  // Fecha del reporte
-  doc.setFontSize(10)
-  doc.setTextColor(100, 100, 100)
-  doc.text(`Generado: ${format(new Date(), "d 'de' MMMM 'de' yyyy", { locale: es })}`, 20, 50)
-  doc.text(`Período: ${format(selectedMonth, "MMMM yyyy", { locale: es })}`, 20, 56)
-  
-  // Resumen
-  doc.setFontSize(16)
-  doc.setTextColor(0, 0, 0)
-  doc.text('Resumen del Mes', 20, 70)
-  
-  // Tabla de resumen
-  autoTable(doc, {
-    startY: 75,
-    head: [['Concepto', 'Monto']],
-    body: [
-      ['Ingresos', `$${totalIngresos.toLocaleString()}`],
-      ['Gastos', `$${totalGastos.toLocaleString()}`],
-      ['Balance', `$${balance.toLocaleString()}`],
-    ],
-    theme: 'grid',
-    headStyles: { fillColor: [139, 92, 246] },
-    styles: { fontSize: 12 },
-    columnStyles: {
-      0: { cellWidth: 100 },
-      1: { cellWidth: 80, halign: 'right', fontStyle: 'bold' }
-    }
-  })
-  
-  // Gastos detallados
-  if (expenses.length > 0) {
-    doc.setFontSize(16)
-    doc.text('Gastos del Mes', 20, (doc as any).lastAutoTable.finalY + 15)
-    
-    autoTable(doc, {
-      startY: (doc as any).lastAutoTable.finalY + 20,
-      head: [['Fecha', 'Descripción', 'Categoría', 'Monto']],
-      body: expenses.map(expense => [
-        format(new Date(expense.expense_date), 'dd/MM/yyyy'),
-        expense.description,
-        expense.category,
-        `$${Number(expense.amount).toLocaleString()}`
-      ]),
-      theme: 'striped',
-      headStyles: { fillColor: [139, 92, 246] },
-      styles: { fontSize: 10 },
-      columnStyles: {
-        0: { cellWidth: 30 },
-        1: { cellWidth: 70 },
-        2: { cellWidth: 40 },
-        3: { cellWidth: 40, halign: 'right' }
-      }
-    })
-  }
-  
-  // Totales por categoría
-  if (categoryData.length > 0) {
-    const yPos = (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY + 15 : 200
-    
-    // Nueva página si no hay espacio
-    if (yPos > pageHeight - 80) {
-      doc.addPage()
-      doc.setFontSize(16)
-      doc.text('Gastos por Categoría', 20, 20)
-      
-      autoTable(doc, {
-        startY: 25,
-        head: [['Categoría', 'Monto', '%']],
-        body: categoryData.map(cat => {
-          const percentage = ((cat.value / totalGastos) * 100).toFixed(1)
-          return [
-            cat.name,
-            `$${cat.value.toLocaleString()}`,
-            `${percentage}%`
-          ]
-        }),
-        theme: 'grid',
-        headStyles: { fillColor: [139, 92, 246] },
-        styles: { fontSize: 10 }
-      })
-    } else {
-      doc.setFontSize(16)
-      doc.text('Gastos por Categoría', 20, yPos)
-      
-      autoTable(doc, {
-        startY: yPos + 5,
-        head: [['Categoría', 'Monto', '%']],
-        body: categoryData.map(cat => {
-          const percentage = ((cat.value / totalGastos) * 100).toFixed(1)
-          return [
-            cat.name,
-            `$${cat.value.toLocaleString()}`,
-            `${percentage}%`
-          ]
-        }),
-        theme: 'grid',
-        headStyles: { fillColor: [139, 92, 246] },
-        styles: { fontSize: 10 }
-      })
-    }
-  }
-  
-  // Footer en todas las páginas
-  const pageCount = (doc as any).internal.getNumberOfPages()
-  for (let i = 1; i <= pageCount; i++) {
-    doc.setPage(i)
-    doc.setFontSize(8)
-    doc.setTextColor(150, 150, 150)
-    doc.text(
-      `Página ${i} de ${pageCount}`,
-      pageWidth / 2,
-      pageHeight - 10,
-      { align: 'center' }
-    )
-  }
-  
-  // Guardar PDF
-  const fileName = `reporte-finanzas-${format(selectedMonth, 'yyyy-MM')}.pdf`
-  doc.save(fileName)
-}
+
     setMonthlyData(months)
 
-    // Datos por categoría de gastos
     const { data: allExpenses } = await supabase
       .from('expenses')
       .select('category, amount')
@@ -267,24 +125,131 @@ export default function FinancesPage() {
     setCategoryData(categoryArray)
   }
 
+  const generatePDF = () => {
+    const doc = new jsPDF()
+    const pageWidth = doc.internal.pageSize.getWidth()
+    const pageHeight = doc.internal.pageSize.getHeight()
+    
+    doc.setFillColor(139, 92, 246)
+    doc.rect(0, 0, pageWidth, 40, 'F')
+    
+    doc.setTextColor(255, 255, 255)
+    doc.setFontSize(24)
+    doc.text('Estética Pro', 20, 20)
+    
+    doc.setFontSize(14)
+    doc.text('Reporte Financiero', 20, 30)
+    
+    doc.setFontSize(10)
+    doc.setTextColor(100, 100, 100)
+    doc.text(`Generado: ${format(new Date(), "d 'de' MMMM 'de' yyyy", { locale: es })}`, 20, 50)
+    doc.text(`Período: ${format(selectedMonth, "MMMM yyyy", { locale: es })}`, 20, 56)
+    
+    doc.setFontSize(16)
+    doc.setTextColor(0, 0, 0)
+    doc.text('Resumen del Mes', 20, 70)
+    
+    autoTable(doc, {
+      startY: 75,
+      head: [['Concepto', 'Monto']],
+      body: [
+        ['Ingresos', `$${totalIngresos.toLocaleString()}`],
+        ['Gastos', `$${totalGastos.toLocaleString()}`],
+        ['Balance', `$${balance.toLocaleString()}`],
+      ],
+      theme: 'grid',
+      headStyles: { fillColor: [139, 92, 246] },
+      styles: { fontSize: 12 },
+      columnStyles: {
+        0: { cellWidth: 100 },
+        1: { cellWidth: 80, halign: 'right', fontStyle: 'bold' }
+      }
+    })
+    
+    if (expenses.length > 0) {
+      doc.setFontSize(16)
+      doc.text('Gastos del Mes', 20, doc.lastAutoTable.finalY + 15)
+      
+      autoTable(doc, {
+        startY: doc.lastAutoTable.finalY + 20,
+        head: [['Fecha', 'Descripción', 'Categoría', 'Monto']],
+        body: expenses.map(expense => [
+          format(new Date(expense.expense_date), 'dd/MM/yyyy'),
+          expense.description,
+          expense.category,
+          `$${Number(expense.amount).toLocaleString()}`
+        ]),
+        theme: 'striped',
+        headStyles: { fillColor: [139, 92, 246] },
+        styles: { fontSize: 10 },
+        columnStyles: {
+          0: { cellWidth: 30 },
+          1: { cellWidth: 70 },
+          2: { cellWidth: 40 },
+          3: { cellWidth: 40, halign: 'right' }
+        }
+      })
+    }
+    
+    if (categoryData.length > 0) {
+      const yPos = doc.lastAutoTable ? doc.lastAutoTable.finalY + 15 : 200
+      
+      if (yPos > pageHeight - 80) {
+        doc.addPage()
+        doc.setFontSize(16)
+        doc.text('Gastos por Categoría', 20, 20)
+        
+        autoTable(doc, {
+          startY: 25,
+          head: [['Categoría', 'Monto', '%']],
+          body: categoryData.map(cat => {
+            const percentage = ((cat.value / totalGastos) * 100).toFixed(1)
+            return [cat.name, `$${cat.value.toLocaleString()}`, `${percentage}%`]
+          }),
+          theme: 'grid',
+          headStyles: { fillColor: [139, 92, 246] },
+          styles: { fontSize: 10 }
+        })
+      } else {
+        doc.setFontSize(16)
+        doc.text('Gastos por Categoría', 20, yPos)
+        
+        autoTable(doc, {
+          startY: yPos + 5,
+          head: [['Categoría', 'Monto', '%']],
+          body: categoryData.map(cat => {
+            const percentage = ((cat.value / totalGastos) * 100).toFixed(1)
+            return [cat.name, `$${cat.value.toLocaleString()}`, `${percentage}%`]
+          }),
+          theme: 'grid',
+          headStyles: { fillColor: [139, 92, 246] },
+          styles: { fontSize: 10 }
+        })
+      }
+    }
+    
+    const pageCount = doc.internal.getNumberOfPages()
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i)
+      doc.setFontSize(8)
+      doc.setTextColor(150, 150, 150)
+      doc.text(`Página ${i} de ${pageCount}`, pageWidth / 2, pageHeight - 10, { align: 'center' })
+    }
+    
+    const fileName = `reporte-finanzas-${format(selectedMonth, 'yyyy-MM')}.pdf`
+    doc.save(fileName)
+  }
+
   const totalIngresos = payments.reduce((sum, p) => sum + Number(p.amount), 0)
   const totalGastos = expenses.reduce((sum, e) => sum + Number(e.amount), 0)
   const balance = totalIngresos - totalGastos
 
-  // Mes anterior
   const previousMonth = subMonths(selectedMonth, 1)
   const previousMonthData = monthlyData.find(m => m.month === format(previousMonth, 'MMM', { locale: es }))
   const balanceChange = previousMonthData ? balance - previousMonthData.balance : 0
   const balancePercentage = previousMonthData?.balance ? ((balanceChange / previousMonthData.balance) * 100).toFixed(1) : '0'
 
   const COLORS = ['#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#6366f1']
-
-  const handleSavePayment = async (data: any) => {
-    await supabase.from('payments').insert(data)
-    setShowPaymentModal(false)
-    loadFinances()
-    loadChartData()
-  }
 
   const handleSaveExpense = async (data: any) => {
     await supabase.from('expenses').insert(data)
@@ -303,7 +268,6 @@ export default function FinancesPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-4xl font-bold text-gray-900 mb-2">Finanzas</h1>
@@ -319,7 +283,6 @@ export default function FinancesPage() {
         </div>
       </div>
 
-      {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="border-l-4 border-l-green-500">
           <CardHeader className="pb-3">
@@ -379,9 +342,7 @@ export default function FinancesPage() {
         </Card>
       </div>
 
-      {/* Gráficas */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Gráfica de Ingresos vs Gastos */}
         <Card>
           <CardHeader>
             <CardTitle>Ingresos vs Gastos (Últimos 6 Meses)</CardTitle>
@@ -401,7 +362,6 @@ export default function FinancesPage() {
           </CardContent>
         </Card>
 
-        {/* Gráfica de Categorías de Gastos */}
         <Card>
           <CardHeader>
             <CardTitle>Gastos por Categoría</CardTitle>
@@ -436,25 +396,22 @@ export default function FinancesPage() {
         </Card>
       </div>
 
-     {/* Botones de acción */}
-<div className="flex gap-3">
-  <Button onClick={() => setShowExpenseModal(true)}>
-    <Plus className="w-4 h-4 mr-2" />
-    Registrar Gasto
-  </Button>
-  
-  {/* AGREGAR ESTE BOTÓN */}
-  <Button 
-    onClick={generatePDF} 
-    variant="outline"
-    className="border-primary text-primary hover:bg-primary hover:text-white"
-  >
-    <FileDown className="w-4 h-4 mr-2" />
-    Exportar PDF
-  </Button>
-</div>
+      <div className="flex gap-3">
+        <Button onClick={() => setShowExpenseModal(true)}>
+          <Plus className="w-4 h-4 mr-2" />
+          Registrar Gasto
+        </Button>
+        
+        <Button 
+          onClick={generatePDF} 
+          variant="outline"
+          className="border-primary text-primary hover:bg-primary hover:text-white"
+        >
+          <FileDown className="w-4 h-4 mr-2" />
+          Exportar PDF
+        </Button>
+      </div>
 
-      {/* Lista de Gastos */}
       <Card>
         <CardHeader>
           <CardTitle>Gastos del Mes</CardTitle>
@@ -491,7 +448,6 @@ export default function FinancesPage() {
         </CardContent>
       </Card>
 
-      {/* Modal para Gastos */}
       {showExpenseModal && (
         <ExpenseModal
           onClose={() => setShowExpenseModal(false)}
@@ -502,7 +458,6 @@ export default function FinancesPage() {
   )
 }
 
-// Componente Modal para Gastos
 function ExpenseModal({ onClose, onSave }: { onClose: () => void; onSave: (data: any) => void }) {
   const [formData, setFormData] = useState({
     description: '',
