@@ -30,5 +30,14 @@ declare module 'jspdf' {
     lastAutoTable: {
       finalY: number
     }
+    internal: {
+      getNumberOfPages(): number
+      pageSize: {
+        width: number
+        height: number
+        getWidth(): number
+        getHeight(): number
+      }
+    }
   }
 }
