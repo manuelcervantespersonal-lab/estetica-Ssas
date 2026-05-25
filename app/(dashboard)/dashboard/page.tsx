@@ -1,261 +1,336 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { createClient } from '@/lib/supabase'
 import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card'
-import { Badge } from '@/app/components/ui/badge'
-import { DollarSign, Calendar, Users, Package, TrendingUp, Clock, CheckCircle, AlertCircle } from 'lucide-react'
+import { Calendar, DollarSign, Users, Package, TrendingUp, Clock, AlertTriangle } from 'lucide-react'
+import { format } from 'date-fns'
+import { es } from 'date-fns/locale'
+
+interface DashboardStats {
+  todayAppointments: number
+  monthRevenue: number
+  totalClients: number
+  lowStockItems: number
+  nextAppointment: any
+  recentAppointments: any[]
+  weekRevenue: { date: string; amount: number }[]
+}
 
 export default function DashboardPage() {
+  const [stats, setStats] = useState<DashboardStats>({
+    todayAppointments: 0,
+    monthRevenue: 0,
+    totalClients: 0,
+    lowStockItems: 0,
+    nextAppointment: null,
+    recentAppointments: [],
+    weekRevenue: []
+  })
+  const [loading, setLoading] = useState(true)
+  const [userRole, setUserRole] = useState<string>('')
+  const [userName, setUserName] = useState<string>('')
+
+  const supabase = createClient()
+
+  useEffect(() => {
+    loadDashboardData()
+  }, [])
+
+  const loadDashboardData = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      
+      if (!user) return
+
+      // Obtener rol del usuario
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role, full_name')
+        .eq('id', user.id)
+        .single()
+
+      if (profile) {
+        setUserRole(profile.role)
+        setUserName(profile.full_name || user.email?.split('@')[0] || 'Usuario')
+      }
+
+      const today = new Date().toISOString().split('T')[0]
+      const firstDayOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]
+
+      // Citas de hoy
+      let appointmentsQuery = supabase
+        .from('appointments')
+        .select(`
+          *,
+          clients(full_name),
+          services(name),
+          profiles!appointments_employee_id_fkey(full_name)
+        `)
+        .eq('appointment_date', today)
+
+      // Si es estilista, solo sus citas
+      if (profile?.role === 'estilista') {
+        appointmentsQuery = appointmentsQuery.eq('employee_id', user.id)
+      }
+
+      const { data: todayAppts } = await appointmentsQuery
+
+      // Próxima cita
+      const now = new Date().toTimeString().split(' ')[0].substring(0, 5)
+      const nextAppt = todayAppts?.find(a => a.appointment_time >= now) || null
+
+      // Citas recientes
+      const { data: recentAppts } = await supabase
+        .from('appointments')
+        .select(`
+          *,
+          clients(full_name),
+          services(name),
+          profiles!appointments_employee_id_fkey(full_name)
+        `)
+        .order('created_at', { ascending: false })
+        .limit(5)
+
+      // Ingresos del mes (solo admin y cajero)
+      let monthRevenue = 0
+      if (profile?.role !== 'estilista') {
+        const { data: payments } = await supabase
+          .from('payments')
+          .select('amount')
+          .gte('payment_date', firstDayOfMonth)
+
+        monthRevenue = payments?.reduce((sum, p) => sum + Number(p.amount), 0) || 0
+      }
+
+      // Total de clientes (solo admin y cajero)
+      let totalClients = 0
+      if (profile?.role !== 'estilista') {
+        const { count } = await supabase
+          .from('clients')
+          .select('*', { count: 'exact', head: true })
+
+        totalClients = count || 0
+      }
+
+      // Productos con stock bajo (solo admin y cajero)
+      let lowStockItems = 0
+      if (profile?.role !== 'estilista') {
+        const { data: inventory } = await supabase
+          .from('inventory')
+          .select('current_quantity, min_quantity')
+
+        lowStockItems = inventory?.filter(item => item.current_quantity <= item.min_quantity).length || 0
+      }
+
+      // Ingresos de la semana (solo admin y cajero)
+      let weekRevenue: { date: string; amount: number }[] = []
+      if (profile?.role !== 'estilista') {
+        const last7Days = Array.from({ length: 7 }, (_, i) => {
+          const d = new Date()
+          d.setDate(d.getDate() - (6 - i))
+          return d.toISOString().split('T')[0]
+        })
+
+        const revenuePromises = last7Days.map(async (date) => {
+          const { data } = await supabase
+            .from('payments')
+            .select('amount')
+            .eq('payment_date', date)
+
+          const total = data?.reduce((sum, p) => sum + Number(p.amount), 0) || 0
+          return { date, amount: total }
+        })
+
+        weekRevenue = await Promise.all(revenuePromises)
+      }
+
+      setStats({
+        todayAppointments: todayAppts?.length || 0,
+        monthRevenue,
+        totalClients,
+        lowStockItems,
+        nextAppointment: nextAppt,
+        recentAppointments: recentAppts || [],
+        weekRevenue
+      })
+
+      setLoading(false)
+    } catch (error) {
+      console.error('Error cargando dashboard:', error)
+      setLoading(false)
+    }
+  }
+
+  const getGreeting = () => {
+    const hour = new Date().getHours()
+    if (hour < 12) return 'Buenos días'
+    if (hour < 19) return 'Buenas tardes'
+    return 'Buenas noches'
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600">Cargando dashboard...</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-4xl font-bold text-gray-900 mb-2">Dashboard</h1>
-        <p className="text-gray-600">Bienvenido de nuevo, aquí está el resumen de hoy</p>
+        <h1 className="text-4xl font-bold text-gray-900 mb-2">
+          {getGreeting()}, {userName}
+        </h1>
+        <p className="text-gray-600">
+          {format(new Date(), "EEEE, d 'de' MMMM 'de' yyyy", { locale: es })}
+        </p>
       </div>
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {/* Ingresos */}
-        <Card className="border-l-4 border-l-green-500 hover:shadow-lg transition-shadow">
+        <Card className="border-l-4 border-l-blue-500">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-medium text-gray-600">
-                Ingresos del Mes
+                Citas de Hoy
               </CardTitle>
-              <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                <DollarSign className="w-5 h-5 text-green-600" />
-              </div>
+              <Calendar className="w-5 h-5 text-blue-600" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="flex items-baseline gap-2">
-              <p className="text-3xl font-bold text-gray-900">$12,450</p>
-              <div className="flex items-center gap-1 text-green-600 text-sm font-medium">
-                <TrendingUp className="w-4 h-4" />
-                +12%
-              </div>
-            </div>
-            <p className="text-sm text-gray-500 mt-1">vs mes anterior</p>
+            <p className="text-3xl font-bold text-gray-900">{stats.todayAppointments}</p>
+            {stats.nextAppointment && (
+              <p className="text-sm text-gray-600 mt-1">
+                Próxima: {stats.nextAppointment.appointment_time}
+              </p>
+            )}
           </CardContent>
         </Card>
 
-        {/* Citas Hoy */}
-        <Card className="border-l-4 border-l-primary hover:shadow-lg transition-shadow">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium text-gray-600">
-                Citas Hoy
-              </CardTitle>
-              <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
-                <Calendar className="w-5 h-5 text-primary" />
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-baseline gap-2">
-              <p className="text-3xl font-bold text-gray-900">8</p>
-              <Badge variant="warning" className="text-xs">
-                3 pendientes
-              </Badge>
-            </div>
-            <p className="text-sm text-gray-500 mt-1">5 completadas</p>
-          </CardContent>
-        </Card>
+        {userRole !== 'estilista' && (
+          <>
+            <Card className="border-l-4 border-l-green-500">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm font-medium text-gray-600">
+                    Ingresos del Mes
+                  </CardTitle>
+                  <DollarSign className="w-5 h-5 text-green-600" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <p className="text-3xl font-bold text-green-600">
+                  ${stats.monthRevenue.toLocaleString()}
+                </p>
+              </CardContent>
+            </Card>
 
-        {/* Clientes Nuevos */}
-        <Card className="border-l-4 border-l-blue-500 hover:shadow-lg transition-shadow">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium text-gray-600">
-                Clientes Nuevos
-              </CardTitle>
-              <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                <Users className="w-5 h-5 text-blue-600" />
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-baseline gap-2">
-              <p className="text-3xl font-bold text-gray-900">24</p>
-              <div className="flex items-center gap-1 text-blue-600 text-sm font-medium">
-                <TrendingUp className="w-4 h-4" />
-                +8
-              </div>
-            </div>
-            <p className="text-sm text-gray-500 mt-1">este mes</p>
-          </CardContent>
-        </Card>
+            <Card className="border-l-4 border-l-purple-500">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm font-medium text-gray-600">
+                    Clientes
+                  </CardTitle>
+                  <Users className="w-5 h-5 text-purple-600" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <p className="text-3xl font-bold text-gray-900">{stats.totalClients}</p>
+              </CardContent>
+            </Card>
 
-        {/* Stock Bajo */}
-        <Card className="border-l-4 border-l-red-500 hover:shadow-lg transition-shadow">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium text-gray-600">
-                Alertas de Stock
-              </CardTitle>
-              <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
-                <Package className="w-5 h-5 text-red-600" />
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-baseline gap-2">
-              <p className="text-3xl font-bold text-gray-900">5</p>
-              <Badge variant="destructive" className="text-xs">
-                Urgente
-              </Badge>
-            </div>
-            <p className="text-sm text-gray-500 mt-1">productos requieren atención</p>
-          </CardContent>
-        </Card>
+            <Card className="border-l-4 border-l-red-500">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm font-medium text-gray-600">
+                    Stock Bajo
+                  </CardTitle>
+                  <AlertTriangle className="w-5 h-5 text-red-600" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <p className="text-3xl font-bold text-red-600">{stats.lowStockItems}</p>
+                {stats.lowStockItems > 0 && (
+                  <p className="text-sm text-gray-600 mt-1">Productos a reponer</p>
+                )}
+              </CardContent>
+            </Card>
+          </>
+        )}
       </div>
 
-      {/* Segunda Fila - Grid de 2 Columnas */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Próximas Citas */}
-        <Card className="lg:col-span-2">
-          <CardHeader className="border-b border-gray-100">
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-lg">Próximas Citas</CardTitle>
-                <p className="text-sm text-gray-500 mt-1">Agenda de hoy</p>
-              </div>
-              <Badge variant="default" className="bg-primary">
-                8 citas
-              </Badge>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-6">
+      {/* Citas Recientes */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Actividad Reciente</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {stats.recentAppointments.length === 0 ? (
+            <p className="text-center text-gray-500 py-8">No hay citas recientes</p>
+          ) : (
             <div className="space-y-4">
-              {/* Cita 1 */}
-              <div className="flex items-center gap-4 p-4 bg-gradient-to-r from-primary/5 to-transparent rounded-xl border border-primary/10 hover:shadow-md transition-all">
-                <div className="flex-shrink-0">
-                  <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center">
-                    <Clock className="w-6 h-6 text-white" />
+              {stats.recentAppointments.map((appt) => (
+                <div key={appt.id} className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
+                  <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
+                    <Calendar className="w-6 h-6 text-primary" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium text-gray-900">
+                      {appt.clients?.full_name || 'Cliente'}
+                    </p>
+                    <p className="text-sm text-gray-600">
+                      {appt.services?.name || 'Servicio'} • {appt.profiles?.full_name || 'Estilista'}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-medium text-gray-900">
+                      {format(new Date(appt.appointment_date), 'd MMM', { locale: es })}
+                    </p>
+                    <p className="text-sm text-gray-600">{appt.appointment_time}</p>
                   </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <p className="font-semibold text-gray-900">María García</p>
-                    <Badge variant="success" className="text-xs">Confirmada</Badge>
-                  </div>
-                  <p className="text-sm text-gray-600">Corte de Cabello · 60 min</p>
-                </div>
-                <div className="text-right flex-shrink-0">
-                  <p className="font-bold text-primary text-lg">10:00 AM</p>
-                  <p className="text-xs text-gray-500">Ana Martínez</p>
-                </div>
-              </div>
-
-              {/* Cita 2 */}
-              <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl border border-gray-100 hover:shadow-md transition-all">
-                <div className="flex-shrink-0">
-                  <div className="w-12 h-12 bg-gray-200 rounded-xl flex items-center justify-center">
-                    <Clock className="w-6 h-6 text-gray-600" />
-                  </div>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <p className="font-semibold text-gray-900">Laura Pérez</p>
-                    <Badge variant="warning" className="text-xs">Pendiente</Badge>
-                  </div>
-                  <p className="text-sm text-gray-600">Tinte + Corte · 120 min</p>
-                </div>
-                <div className="text-right flex-shrink-0">
-                  <p className="font-bold text-gray-900 text-lg">11:30 AM</p>
-                  <p className="text-xs text-gray-500">Carmen López</p>
-                </div>
-              </div>
-
-              {/* Cita 3 */}
-              <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl border border-gray-100 hover:shadow-md transition-all">
-                <div className="flex-shrink-0">
-                  <div className="w-12 h-12 bg-gray-200 rounded-xl flex items-center justify-center">
-                    <Clock className="w-6 h-6 text-gray-600" />
-                  </div>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <p className="font-semibold text-gray-900">Sofía Martínez</p>
-                    <Badge variant="warning" className="text-xs">Pendiente</Badge>
-                  </div>
-                  <p className="text-sm text-gray-600">Manicure · 45 min</p>
-                </div>
-                <div className="text-right flex-shrink-0">
-                  <p className="font-bold text-gray-900 text-lg">2:00 PM</p>
-                  <p className="text-xs text-gray-500">Ana Martínez</p>
-                </div>
-              </div>
+              ))}
             </div>
+          )}
+        </CardContent>
+      </Card>
 
-            <button className="w-full mt-4 py-3 text-primary hover:bg-primary/5 rounded-xl font-medium transition-colors">
-              Ver todas las citas →
-            </button>
-          </CardContent>
-        </Card>
-
-        {/* Resumen Rápido */}
+      {/* Gráfica simple de ingresos de la semana (solo admin y cajero) */}
+      {userRole !== 'estilista' && stats.weekRevenue.length > 0 && (
         <Card>
-          <CardHeader className="border-b border-gray-100">
-            <CardTitle className="text-lg">Resumen Rápido</CardTitle>
-            <p className="text-sm text-gray-500 mt-1">Estadísticas de hoy</p>
+          <CardHeader>
+            <CardTitle>Ingresos de los Últimos 7 Días</CardTitle>
           </CardHeader>
-          <CardContent className="pt-6">
-            <div className="space-y-4">
-              {/* Completadas */}
-              <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <CheckCircle className="w-5 h-5 text-green-600" />
-                  <span className="font-medium text-gray-700">Completadas</span>
-                </div>
-                <span className="text-xl font-bold text-green-600">5</span>
-              </div>
+          <CardContent>
+            <div className="h-64 flex items-end justify-between gap-2">
+              {stats.weekRevenue.map((day, index) => {
+                const maxRevenue = Math.max(...stats.weekRevenue.map(d => d.amount))
+                const height = maxRevenue > 0 ? (day.amount / maxRevenue) * 100 : 0
 
-              {/* Pendientes */}
-              <div className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <Clock className="w-5 h-5 text-yellow-600" />
-                  <span className="font-medium text-gray-700">Pendientes</span>
-                </div>
-                <span className="text-xl font-bold text-yellow-600">3</span>
-              </div>
-
-              {/* Canceladas */}
-              <div className="flex items-center justify-between p-3 bg-red-50 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <AlertCircle className="w-5 h-5 text-red-600" />
-                  <span className="font-medium text-gray-700">Canceladas</span>
-                </div>
-                <span className="text-xl font-bold text-red-600">0</span>
-              </div>
-
-              {/* Ingresos Hoy */}
-              <div className="mt-6 p-4 bg-gradient-to-br from-primary to-primary-dark rounded-xl text-white">
-                <p className="text-sm opacity-90 mb-1">Ingresos de Hoy</p>
-                <p className="text-3xl font-bold">$2,340</p>
-                <p className="text-sm opacity-75 mt-1">5 servicios completados</p>
-              </div>
-
-              {/* Servicios Populares */}
-              <div className="mt-6">
-                <h4 className="font-semibold text-gray-900 mb-3">Servicios Populares</h4>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-600">Corte de Cabello</span>
-                    <span className="font-semibold text-gray-900">15</span>
+                return (
+                  <div key={index} className="flex-1 flex flex-col items-center gap-2">
+                    <div className="w-full bg-primary/20 rounded-t-lg relative group cursor-pointer hover:bg-primary/30 transition-colors"
+                         style={{ height: `${height}%`, minHeight: day.amount > 0 ? '20px' : '0' }}>
+                      <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white px-2 py-1 rounded text-xs opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                        ${day.amount.toLocaleString()}
+                      </div>
+                    </div>
+                    <p className="text-xs text-gray-600">
+                      {format(new Date(day.date), 'EEE', { locale: es })}
+                    </p>
                   </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-600">Manicure</span>
-                    <span className="font-semibold text-gray-900">12</span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-600">Tinte</span>
-                    <span className="font-semibold text-gray-900">8</span>
-                  </div>
-                </div>
-              </div>
+                )
+              })}
             </div>
           </CardContent>
         </Card>
-      </div>
+      )}
     </div>
   )
 }
