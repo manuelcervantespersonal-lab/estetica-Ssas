@@ -17,7 +17,7 @@ interface InventoryItem {
   current_quantity: number
   min_quantity: number
   supplier: string
-  last_purchase_date: string
+  unit_price?: number
   created_at: string
 }
 
@@ -39,14 +39,14 @@ export default function InventoryPage() {
   const [showLowStock, setShowLowStock] = useState(false)
   
   const [formData, setFormData] = useState({
-  product_name: '',
-  brand: '',
-  category: 'cabello',
-  current_quantity: 0,
-  min_quantity: 5,
-  supplier: '',
-  unit_price: 0,
-})
+    product_name: '',
+    brand: '',
+    category: 'cabello',
+    current_quantity: 0,
+    min_quantity: 5,
+    supplier: '',
+    unit_price: 0,
+  })
 
   const supabase = createClient()
 
@@ -71,33 +71,33 @@ export default function InventoryPage() {
 
   const lowStockCount = items.filter(item => item.current_quantity <= item.min_quantity).length
 
- const handleCreate = () => {
-  setEditingItem(null)
-  setFormData({
-    product_name: '',
-    brand: '',
-    category: 'cabello',
-    current_quantity: 0,
-    min_quantity: 5,
-    supplier: '',
-    unit_price: 0,
-  })
-  setShowModal(true)
-}
+  const handleCreate = () => {
+    setEditingItem(null)
+    setFormData({
+      product_name: '',
+      brand: '',
+      category: 'cabello',
+      current_quantity: 0,
+      min_quantity: 5,
+      supplier: '',
+      unit_price: 0,
+    })
+    setShowModal(true)
+  }
 
-const handleEdit = (item: InventoryItem) => {
-  setEditingItem(item)
-  setFormData({
-    product_name: item.product_name,
-    brand: item.brand || '',
-    category: item.category,
-    current_quantity: item.current_quantity,
-    min_quantity: item.min_quantity,
-    supplier: item.supplier || '',
-    unit_price: item.unit_price || 0,
-  })
-  setShowModal(true)
-}
+  const handleEdit = (item: InventoryItem) => {
+    setEditingItem(item)
+    setFormData({
+      product_name: item.product_name,
+      brand: item.brand || '',
+      category: item.category,
+      current_quantity: item.current_quantity,
+      min_quantity: item.min_quantity,
+      supplier: item.supplier || '',
+      unit_price: item.unit_price || 0,
+    })
+    setShowModal(true)
+  }
 
   const handleSave = async () => {
     if (!formData.product_name) {
@@ -112,11 +112,10 @@ const handleEdit = (item: InventoryItem) => {
         .eq('id', editingItem.id)
 
       if (error) {
-  console.error('Error al crear:', error)
-  console.error('Detalles:', JSON.stringify(error, null, 2))
-  alert(`Error al crear el producto: ${error.message}`)
-  return
-}
+        console.error('Error al actualizar:', error)
+        alert(`Error al actualizar el producto: ${error.message}`)
+        return
+      }
     } else {
       const { error } = await supabase
         .from('inventory')
@@ -124,7 +123,7 @@ const handleEdit = (item: InventoryItem) => {
 
       if (error) {
         console.error('Error al crear:', error)
-        alert('Error al crear el producto')
+        alert(`Error al crear el producto: ${error.message}`)
         return
       }
     }
