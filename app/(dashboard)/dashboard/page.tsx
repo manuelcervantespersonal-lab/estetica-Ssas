@@ -2,10 +2,22 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
-import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card'
-import { Calendar, DollarSign, Users, Package, TrendingUp, Clock, AlertTriangle } from 'lucide-react'
+import { 
+  Calendar, 
+  DollarSign, 
+  Users, 
+  AlertTriangle,
+  ArrowUpRight,
+  ArrowDownRight,
+  CheckCircle2,
+  Sparkles,
+  Search,
+  Bell,
+  Plus
+} from 'lucide-react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
+import { AreaChart, Area, PieChart, Pie, Cell, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts'
 
 interface DashboardStats {
   todayAppointments: number
@@ -169,168 +181,291 @@ export default function DashboardPage() {
     return 'Buenas noches'
   }
 
+  // Datos para gráfico de servicios (ejemplo)
+  const servicesData = [
+    { name: 'Manicure', value: 35, color: '#a855f7' },
+    { name: 'Pedicure', value: 25, color: '#ec4899' },
+    { name: 'Facial', value: 20, color: '#8b5cf6' },
+    { name: 'Masajes', value: 15, color: '#d946ef' },
+    { name: 'Otros', value: 5, color: '#c084fc' },
+  ]
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="flex items-center justify-center h-screen bg-gradient-to-br from-gray-50 to-purple-50/30">
         <div className="text-center">
-          <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600">Cargando dashboard...</p>
+          <div className="w-16 h-16 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600 font-medium">Cargando dashboard...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-4xl font-bold text-gray-900 mb-2">
-          {getGreeting()}, {userName}
-        </h1>
-        <p className="text-gray-600">
-          {format(new Date(), "EEEE, d 'de' MMMM 'de' yyyy", { locale: es })}
-        </p>
-      </div>
-
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card className="border-l-4 border-l-blue-500">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium text-gray-600">
-                Citas de Hoy
-              </CardTitle>
-              <Calendar className="w-5 h-5 text-blue-600" />
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-purple-50/30">
+      {/* Topbar Premium */}
+      <div className="sticky top-0 z-40 backdrop-blur-xl bg-white/80 border-b border-gray-200/50 shadow-sm">
+        <div className="px-8 py-4">
+          <div className="flex items-center justify-between">
+            {/* Search Bar */}
+            <div className="flex-1 max-w-xl">
+              <div className="relative">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" strokeWidth={2} />
+                <input
+                  type="text"
+                  placeholder="Buscar clientes, citas, servicios..."
+                  className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:border-purple-300 focus:ring-4 focus:ring-purple-100 outline-none transition-all text-sm"
+                />
+              </div>
             </div>
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-bold text-gray-900">{stats.todayAppointments}</p>
-            {stats.nextAppointment && (
-              <p className="text-sm text-gray-600 mt-1">
-                Próxima: {stats.nextAppointment.appointment_time}
-              </p>
-            )}
-          </CardContent>
-        </Card>
 
-        {userRole !== 'estilista' && (
-          <>
-            <Card className="border-l-4 border-l-green-500">
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm font-medium text-gray-600">
-                    Ingresos del Mes
-                  </CardTitle>
-                  <DollarSign className="w-5 h-5 text-green-600" />
-                </div>
-              </CardHeader>
-              <CardContent>
-                <p className="text-3xl font-bold text-green-600">
-                  ${stats.monthRevenue.toLocaleString()}
-                </p>
-              </CardContent>
-            </Card>
+            {/* Right Actions */}
+            <div className="flex items-center gap-3">
+              <button className="relative w-10 h-10 bg-gray-100 hover:bg-gray-200 rounded-xl flex items-center justify-center transition-all group">
+                <Bell className="w-5 h-5 text-gray-600 group-hover:text-purple-600" strokeWidth={2} />
+                <span className="absolute top-1 right-1 w-2 h-2 bg-fuchsia-500 rounded-full border-2 border-white"></span>
+              </button>
 
-            <Card className="border-l-4 border-l-purple-500">
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm font-medium text-gray-600">
-                    Clientes
-                  </CardTitle>
-                  <Users className="w-5 h-5 text-purple-600" />
-                </div>
-              </CardHeader>
-              <CardContent>
-                <p className="text-3xl font-bold text-gray-900">{stats.totalClients}</p>
-              </CardContent>
-            </Card>
+              <div className="w-px h-8 bg-gray-200"></div>
 
-            <Card className="border-l-4 border-l-red-500">
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm font-medium text-gray-600">
-                    Stock Bajo
-                  </CardTitle>
-                  <AlertTriangle className="w-5 h-5 text-red-600" />
+              <div className="flex items-center gap-3">
+                <div className="text-right">
+                  <p className="text-sm font-semibold text-gray-900">{userName}</p>
+                  <p className="text-xs text-gray-500">{userRole === 'admin' ? 'Administrador' : userRole === 'cajero' ? 'Recepción' : 'Estilista'}</p>
                 </div>
-              </CardHeader>
-              <CardContent>
-                <p className="text-3xl font-bold text-red-600">{stats.lowStockItems}</p>
-                {stats.lowStockItems > 0 && (
-                  <p className="text-sm text-gray-600 mt-1">Productos a reponer</p>
-                )}
-              </CardContent>
-            </Card>
-          </>
-        )}
+                <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-fuchsia-500 rounded-xl flex items-center justify-center shadow-lg">
+                  <span className="text-white font-bold text-sm">
+                    {userName.charAt(0).toUpperCase()}
+                  </span>
+                </div>
+              </div>
+
+              <button className="ml-2 px-5 py-2.5 bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white font-semibold rounded-xl hover:shadow-lg hover:shadow-purple-500/50 transition-all flex items-center gap-2 text-sm">
+                <Plus className="w-4 h-4" strokeWidth={2.5} />
+                Nueva Cita
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Citas Recientes */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Actividad Reciente</CardTitle>
-        </CardHeader>
-        <CardContent>
+      {/* Main Content */}
+      <div className="p-8 space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 mb-1">
+              {getGreeting()}, {userName} 👋
+            </h1>
+            <p className="text-gray-600">
+              {format(new Date(), "EEEE, d 'de' MMMM 'de' yyyy", { locale: es })}
+            </p>
+          </div>
+        </div>
+
+        {/* Stats Cards Premium */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {/* Card 1 - Citas de Hoy */}
+          <div className="group relative">
+            <div className="absolute inset-0 bg-gradient-to-br from-purple-500/20 to-fuchsia-500/20 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-all duration-500"></div>
+            <div className="relative bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-xl hover:border-purple-200 transition-all duration-300">
+              <div className="flex items-start justify-between mb-4">
+                <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg shadow-purple-500/30">
+                  <Calendar className="w-6 h-6 text-white" strokeWidth={2.5} />
+                </div>
+                <div className="flex items-center gap-1 text-purple-600 text-sm font-semibold">
+                  <ArrowUpRight className="w-4 h-4" />
+                  <span>Hoy</span>
+                </div>
+              </div>
+              <p className="text-gray-600 text-sm font-medium mb-1">Citas de Hoy</p>
+              <p className="text-3xl font-bold text-gray-900">{stats.todayAppointments}</p>
+              {stats.nextAppointment && (
+                <p className="text-xs text-gray-500 mt-2">
+                  Próxima: {stats.nextAppointment.appointment_time}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Card 2 - Ingresos (solo admin y cajero) */}
+          {userRole !== 'estilista' && (
+            <div className="group relative">
+              <div className="absolute inset-0 bg-gradient-to-br from-green-500/20 to-emerald-500/20 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-all duration-500"></div>
+              <div className="relative bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-xl hover:border-green-200 transition-all duration-300">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-500 rounded-xl flex items-center justify-center shadow-lg shadow-green-500/30">
+                    <DollarSign className="w-6 h-6 text-white" strokeWidth={2.5} />
+                  </div>
+                  <div className="flex items-center gap-1 text-green-600 text-sm font-semibold">
+                    <ArrowUpRight className="w-4 h-4" />
+                    <span>+12%</span>
+                  </div>
+                </div>
+                <p className="text-gray-600 text-sm font-medium mb-1">Ingresos del Mes</p>
+                <p className="text-3xl font-bold text-gray-900">${stats.monthRevenue.toLocaleString()}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Card 3 - Clientes (solo admin y cajero) */}
+          {userRole !== 'estilista' && (
+            <div className="group relative">
+              <div className="absolute inset-0 bg-gradient-to-br from-violet-500/20 to-purple-500/20 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-all duration-500"></div>
+              <div className="relative bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-xl hover:border-violet-200 transition-all duration-300">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="w-12 h-12 bg-gradient-to-br from-violet-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg shadow-violet-500/30">
+                    <Users className="w-6 h-6 text-white" strokeWidth={2.5} />
+                  </div>
+                  <div className="flex items-center gap-1 text-violet-600 text-sm font-semibold">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                </div>
+                <p className="text-gray-600 text-sm font-medium mb-1">Total Clientes</p>
+                <p className="text-3xl font-bold text-gray-900">{stats.totalClients}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Card 4 - Stock Bajo (solo admin y cajero) */}
+          {userRole !== 'estilista' && (
+            <div className="group relative">
+              <div className="absolute inset-0 bg-gradient-to-br from-red-500/20 to-rose-500/20 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-all duration-500"></div>
+              <div className="relative bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-xl hover:border-red-200 transition-all duration-300">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="w-12 h-12 bg-gradient-to-br from-red-500 to-rose-500 rounded-xl flex items-center justify-center shadow-lg shadow-red-500/30">
+                    <AlertTriangle className="w-6 h-6 text-white" strokeWidth={2.5} />
+                  </div>
+                  {stats.lowStockItems > 0 && (
+                    <div className="flex items-center gap-1 text-red-600 text-sm font-semibold">
+                      <ArrowDownRight className="w-4 h-4" />
+                      <span>Alerta</span>
+                    </div>
+                  )}
+                </div>
+                <p className="text-gray-600 text-sm font-medium mb-1">Stock Bajo</p>
+                <p className="text-3xl font-bold text-gray-900">{stats.lowStockItems}</p>
+                {stats.lowStockItems > 0 && (
+                  <p className="text-xs text-red-500 mt-2">Productos a reponer</p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Charts Row */}
+        {userRole !== 'estilista' && stats.weekRevenue.length > 0 && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Revenue Chart */}
+            <div className="lg:col-span-2 bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Ingresos de la Semana</h3>
+                  <p className="text-sm text-gray-500 mt-1">Últimos 7 días</p>
+                </div>
+              </div>
+              <ResponsiveContainer width="100%" height={280}>
+                <AreaChart data={stats.weekRevenue.map(d => ({ 
+                  name: format(new Date(d.date), 'EEE', { locale: es }), 
+                  ingresos: d.amount 
+                }))}>
+                  <defs>
+                    <linearGradient id="colorIngresos" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#a855f7" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="#a855f7" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis dataKey="name" stroke="#9ca3af" style={{ fontSize: '12px' }} />
+                  <YAxis stroke="#9ca3af" style={{ fontSize: '12px' }} />
+                  <Tooltip 
+                    contentStyle={{ 
+                      backgroundColor: 'white', 
+                      border: '1px solid #e5e7eb',
+                      borderRadius: '12px',
+                      boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
+                    }}
+                  />
+                  <Area type="monotone" dataKey="ingresos" stroke="#a855f7" strokeWidth={3} fillOpacity={1} fill="url(#colorIngresos)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Services Pie Chart */}
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+              <h3 className="text-lg font-bold text-gray-900 mb-6">Servicios Populares</h3>
+              <ResponsiveContainer width="100%" height={200}>
+                <PieChart>
+                  <Pie
+                    data={servicesData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={80}
+                    paddingAngle={5}
+                    dataKey="value"
+                  >
+                    {servicesData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="mt-6 space-y-3">
+                {servicesData.map((service, index) => (
+                  <div key={index} className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: service.color }}></div>
+                      <span className="text-sm text-gray-700">{service.name}</span>
+                    </div>
+                    <span className="text-sm font-semibold text-gray-900">{service.value}%</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Citas Recientes Premium */}
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-lg font-bold text-gray-900">Actividad Reciente</h3>
+            <button className="text-sm text-purple-600 hover:text-purple-700 font-semibold">
+              Ver todas
+            </button>
+          </div>
           {stats.recentAppointments.length === 0 ? (
             <p className="text-center text-gray-500 py-8">No hay citas recientes</p>
           ) : (
             <div className="space-y-4">
               {stats.recentAppointments.map((appt) => (
-                <div key={appt.id} className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
-                  <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
-                    <Calendar className="w-6 h-6 text-primary" />
+                <div key={appt.id} className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl hover:bg-purple-50 transition-colors">
+                  <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-fuchsia-500 rounded-lg flex items-center justify-center shadow-md">
+                    <span className="text-white font-bold text-sm">
+                      {appt.clients?.full_name?.charAt(0) || 'C'}
+                    </span>
                   </div>
                   <div className="flex-1">
-                    <p className="font-medium text-gray-900">
+                    <p className="font-semibold text-gray-900 text-sm">
                       {appt.clients?.full_name || 'Cliente'}
                     </p>
-                    <p className="text-sm text-gray-600">
+                    <p className="text-xs text-gray-500">
                       {appt.services?.name || 'Servicio'} • {appt.profiles?.full_name || 'Estilista'}
                     </p>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm font-medium text-gray-900">
+                    <p className="text-sm font-semibold text-gray-900">
                       {format(new Date(appt.appointment_date), 'd MMM', { locale: es })}
                     </p>
-                    <p className="text-sm text-gray-600">{appt.appointment_time}</p>
+                    <p className="text-xs text-gray-500">{appt.appointment_time}</p>
                   </div>
+                  <CheckCircle2 className="w-5 h-5 text-green-500" />
                 </div>
               ))}
             </div>
           )}
-        </CardContent>
-      </Card>
-
-      {/* Gráfica simple de ingresos de la semana (solo admin y cajero) */}
-      {userRole !== 'estilista' && stats.weekRevenue.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Ingresos de los Últimos 7 Días</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-64 flex items-end justify-between gap-2">
-              {stats.weekRevenue.map((day, index) => {
-                const maxRevenue = Math.max(...stats.weekRevenue.map(d => d.amount))
-                const height = maxRevenue > 0 ? (day.amount / maxRevenue) * 100 : 0
-
-                return (
-                  <div key={index} className="flex-1 flex flex-col items-center gap-2">
-                    <div className="w-full bg-primary/20 rounded-t-lg relative group cursor-pointer hover:bg-primary/30 transition-colors"
-                         style={{ height: `${height}%`, minHeight: day.amount > 0 ? '20px' : '0' }}>
-                      <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white px-2 py-1 rounded text-xs opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                        ${day.amount.toLocaleString()}
-                      </div>
-                    </div>
-                    <p className="text-xs text-gray-600">
-                      {format(new Date(day.date), 'EEE', { locale: es })}
-                    </p>
-                  </div>
-                )
-              })}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+        </div>
+      </div>
     </div>
   )
 }

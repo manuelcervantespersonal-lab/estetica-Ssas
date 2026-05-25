@@ -2,10 +2,10 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Home, Users, Scissors, Calendar, Package, DollarSign, Settings, LogOut } from 'lucide-react'
+import { Home, Users, Scissors, Calendar, Package, DollarSign, Settings, LogOut, Sparkles, TrendingUp, FileText, Bell } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
-import Notifications from './Notifications'
+
 export default function Sidebar() {
   const pathname = usePathname()
   const [userRole, setUserRole] = useState<string | null>(null)
@@ -38,7 +38,6 @@ export default function Sidebar() {
     window.location.href = '/login'
   }
 
-  // Definir navegación según rol
   const getNavigation = () => {
     const baseNav = [
       { name: 'Dashboard', href: '/dashboard', icon: Home },
@@ -52,6 +51,7 @@ export default function Sidebar() {
         { name: 'Citas', href: '/dashboard/appointments', icon: Calendar },
         { name: 'Inventario', href: '/dashboard/inventory', icon: Package },
         { name: 'Finanzas', href: '/dashboard/finances', icon: DollarSign },
+        { name: 'Reportes', href: '/dashboard/reports', icon: TrendingUp },
         { name: 'Configuración', href: '/dashboard/settings', icon: Settings },
       ]
     }
@@ -87,67 +87,96 @@ export default function Sidebar() {
   }
 
   return (
-    <div className="flex h-screen w-64 flex-col bg-gradient-to-b from-primary-dark to-primary">
-      {/* Logo */}
-      <div className="flex h-16 items-center gap-3 px-6 border-b border-white/10">
-        <div className="text-3xl">💜</div>
+    <div className="flex h-screen w-72 flex-col bg-gradient-to-br from-[#4a1d8f] via-[#5a2ba8] to-[#6b3fc0] relative overflow-hidden">
+      {/* Efectos de fondo */}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(168,85,247,0.15),transparent_50%)]"></div>
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom_left,rgba(219,39,119,0.1),transparent_50%)]"></div>
+      
+      {/* Logo Premium */}
+      <div className="relative flex h-20 items-center gap-3 px-6 border-b border-white/10">
+        <div className="relative group">
+          <div className="absolute inset-0 bg-gradient-to-br from-fuchsia-500 to-purple-600 rounded-2xl blur-md opacity-75 group-hover:opacity-100 transition-opacity"></div>
+          <div className="relative w-12 h-12 bg-gradient-to-br from-fuchsia-500 via-purple-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-xl">
+            <Sparkles className="w-7 h-7 text-white" strokeWidth={2.5} />
+          </div>
+        </div>
         <div>
-          <h1 className="text-xl font-bold text-white">Estética Pro</h1>
-          <p className="text-xs text-primary-light">{getRoleName()}</p>
+          <h1 className="text-xl font-bold text-white tracking-tight">Estética Pro</h1>
+          <p className="text-xs text-purple-200 font-medium">{getRoleName()}</p>
         </div>
       </div>
 
-      {/* User Info */}
-<div className="px-6 py-4 border-b border-white/10">
-  <div className="flex items-center gap-3">
-    <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
-      <span className="text-white font-semibold text-lg">
-        {userName.charAt(0).toUpperCase()}
-      </span>
-    </div>
-    <div className="flex-1">
-      <p className="text-white font-medium text-sm">{userName}</p>
-      <p className="text-primary-light text-xs">{getRoleName()}</p>
-    </div>
-    {/* AGREGAR AQUÍ */}
-    <Notifications />
-  </div>
-</div>
+      {/* User Info Card Premium */}
+      <div className="relative px-4 py-5 border-b border-white/10">
+        <div className="relative group">
+          <div className="absolute inset-0 bg-white/5 rounded-2xl blur-sm"></div>
+          <div className="relative bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-4 hover:bg-white/15 transition-all duration-300">
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <div className="absolute inset-0 bg-gradient-to-br from-fuchsia-400 to-purple-500 rounded-xl blur-md opacity-60"></div>
+                <div className="relative w-11 h-11 bg-gradient-to-br from-fuchsia-400 to-purple-500 rounded-xl flex items-center justify-center shadow-lg">
+                  <span className="text-white font-bold text-lg">
+                    {userName.charAt(0).toUpperCase()}
+                  </span>
+                </div>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-white font-semibold text-sm truncate">{userName}</p>
+                <p className="text-purple-200 text-xs font-medium">{getRoleName()}</p>
+              </div>
+              <button className="w-8 h-8 bg-white/10 hover:bg-white/20 rounded-lg flex items-center justify-center transition-colors border border-white/20 relative group">
+                <Bell className="w-4 h-4 text-white" strokeWidth={2} />
+                <span className="absolute top-0 right-0 w-2 h-2 bg-fuchsia-500 rounded-full border-2 border-purple-700"></span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto px-3 py-4">
-        <ul className="space-y-1">
-          {navigation.map((item) => {
-            const isActive = pathname === item.href
-            const Icon = item.icon
+      {/* Navigation Premium */}
+      <nav className="flex-1 overflow-y-auto px-4 py-6 space-y-2 relative">
+        {navigation.map((item) => {
+          const isActive = pathname === item.href
+          const Icon = item.icon
 
-            return (
-              <li key={item.name}>
-                <Link
-                  href={item.href}
-                  className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
-                    isActive
-                      ? 'bg-white text-primary shadow-lg'
-                      : 'text-white hover:bg-white/10'
-                  }`}
-                >
-                  <Icon className="h-5 w-5" />
-                  {item.name}
-                </Link>
-              </li>
-            )
-          })}
-        </ul>
+          return (
+            <Link
+              key={item.name}
+              href={item.href}
+              className="relative block group"
+            >
+              {isActive && (
+                <div className="absolute inset-0 bg-white rounded-xl blur-md opacity-25"></div>
+              )}
+              <div
+                className={`relative flex items-center gap-3 rounded-xl px-4 py-3.5 text-sm font-semibold transition-all duration-300 ${
+                  isActive
+                    ? 'bg-white text-purple-700 shadow-xl shadow-purple-900/20'
+                    : 'text-white hover:bg-white/10 hover:translate-x-1'
+                }`}
+              >
+                <Icon className={`h-5 w-5 ${isActive ? 'text-purple-600' : ''}`} strokeWidth={2.5} />
+                {item.name}
+                {isActive && (
+                  <div className="ml-auto w-2 h-2 bg-purple-600 rounded-full"></div>
+                )}
+              </div>
+            </Link>
+          )
+        })}
       </nav>
 
-      {/* Logout */}
-      <div className="border-t border-white/10 p-3">
+      {/* Logout Button Premium */}
+      <div className="relative border-t border-white/10 p-4">
         <button
           onClick={handleLogout}
-          className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-white hover:bg-white/10 transition-all"
+          className="relative w-full group"
         >
-          <LogOut className="h-5 w-5" />
-          Cerrar Sesión
+          <div className="absolute inset-0 bg-white/5 rounded-xl blur-sm opacity-0 group-hover:opacity-100 transition-opacity"></div>
+          <div className="relative flex items-center gap-3 rounded-xl px-4 py-3.5 text-sm font-semibold text-white hover:bg-white/10 transition-all duration-300 border border-white/10 hover:border-white/20">
+            <LogOut className="h-5 w-5" strokeWidth={2.5} />
+            Cerrar Sesión
+          </div>
         </button>
       </div>
     </div>

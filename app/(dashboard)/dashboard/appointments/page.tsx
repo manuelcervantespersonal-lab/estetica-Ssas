@@ -1,27 +1,10 @@
 'use client'
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase'
-import { Button } from '@/app/components/ui/button'
-import { Input } from '@/app/components/ui/input'
-import { Select } from '@/app/components/ui/select'
-import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card'
-import { Badge } from '@/app/components/ui/badge'
-import { Plus, Calendar as CalendarIcon, Clock, User, List, Grid } from 'lucide-react'
-import { Calendar, dateFnsLocalizer } from 'react-big-calendar'
-import { format, parse, startOfWeek, getDay } from 'date-fns'
+import { Plus, ChevronLeft, ChevronRight, X, Clock, User, Calendar as CalendarIcon } from 'lucide-react'
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, isToday } from 'date-fns'
 import { es } from 'date-fns/locale'
-import 'react-big-calendar/lib/css/react-big-calendar.css'
-
-const locales = { es }
-
-const localizer = dateFnsLocalizer({
-  format,
-  parse,
-  startOfWeek,
-  getDay,
-  locales,
-})
 
 interface Appointment {
   id: string
@@ -35,14 +18,6 @@ interface Appointment {
   clients: { full_name: string; phone: string }
   services: { name: string; duration_minutes: number; price: number }
   profiles: { full_name: string }
-}
-
-interface CalendarEvent {
-  id: string
-  title: string
-  start: Date
-  end: Date
-  resource: Appointment
 }
 
 interface Client {
@@ -70,9 +45,14 @@ export default function AppointmentsPage() {
   const [userRole, setUserRole] = useState<string | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
   
-  const [viewMode, setViewMode] = useState<'calendar' | 'list'>('calendar')
-  const [showModal, setShowModal] = useState(false)
+  const [currentMonth, setCurrentMonth] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState(new Date())
+  const [showModal, setShowModal] = useState(false)
+  const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('day')
+  
+  const [filterService, setFilterService] = useState<string>('all')
+  const [filterEmployee, setFilterEmployee] = useState<string>('all')
+  const [filterStatus, setFilterStatus] = useState<string>('all')
   
   const [formData, setFormData] = useState({
     clientId: '',
@@ -90,50 +70,38 @@ export default function AppointmentsPage() {
   }, [])
 
   const initialize = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser()
-      
-      if (!user) {
-        console.error('No hay usuario autenticado')
-        alert('Debes iniciar sesión primero')
-        window.location.href = '/login'
-        return
-      }
-
-      setUserId(user.id)
-
-      // Obtener rol del usuario
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .single()
-
-      if (profile) {
-        setUserRole(profile.role)
-      }
-
-      await Promise.all([
-        loadAppointments(),
-        loadClients(),
-        loadServices(),
-        loadStylists(),
-      ])
-    } catch (error) {
-      console.error('Error al inicializar:', error)
-    }
-  }
-
-  const loadAppointments = async () => {
-  try {
     const { data: { user } } = await supabase.auth.getUser()
     
     if (!user) {
-      console.error('No hay usuario autenticado')
+      window.location.href = '/login'
       return
     }
 
-    // Obtener rol del usuario
+    setUserId(user.id)
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    if (profile) {
+      setUserRole(profile.role)
+    }
+
+    await Promise.all([
+      loadAppointments(),
+      loadClients(),
+      loadServices(),
+      loadStylists(),
+    ])
+  }
+
+  const loadAppointments = async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    
+    if (!user) return
+
     const { data: profile } = await supabase
       .from('profiles')
       .select('role')
@@ -149,26 +117,16 @@ export default function AppointmentsPage() {
         profiles!appointments_employee_id_fkey(full_name)
       `)
 
-    // Si es estilista, solo ver SUS citas
     if (profile?.role === 'estilista') {
       query = query.eq('employee_id', user.id)
     }
 
-    // Admin y cajero ven todas las citas
-    const { data, error } = await query
+    const { data } = await query
       .order('appointment_date', { ascending: true })
       .order('appointment_time', { ascending: true })
 
-    if (error) {
-      console.error('Error cargando citas:', error)
-      return
-    }
-
     if (data) setAppointments(data as any)
-  } catch (error) {
-    console.error('Error inesperado:', error)
   }
-}
 
   const loadClients = async () => {
     const { data } = await supabase
@@ -201,34 +159,24 @@ export default function AppointmentsPage() {
   }
 
   const handleCreateAppointment = async () => {
-    try {
-      // Verificar autenticación
-      const { data: { user } } = await supabase.auth.getUser()
-      
-      if (!user) {
-        alert('Debes iniciar sesión primero')
-        window.location.href = '/login'
-        return
-      }
+    if (!formData.clientId || !formData.serviceId || !formData.appointmentTime) {
+      alert('Por favor completa todos los campos obligatorios')
+      return
+    }
 
-      // Validar campos
-      if (!formData.clientId || !formData.serviceId || !formData.appointmentTime) {
-        alert('Por favor completa todos los campos obligatorios')
-        return
-      }
+    let employeeId = formData.employeeId
+    if (userRole === 'estilista') {
+      employeeId = userId!
+    }
 
-      // Determinar employee_id
-      let employeeId = formData.employeeId
-      if (userRole === 'estilista') {
-        employeeId = userId!
-      }
+    if (!employeeId) {
+      alert('Debes seleccionar una estilista')
+      return
+    }
 
-      if (!employeeId) {
-        alert('Debes seleccionar una estilista')
-        return
-      }
-
-      console.log('Creando cita con datos:', {
+    const { error } = await supabase
+      .from('appointments')
+      .insert({
         client_id: formData.clientId,
         service_id: formData.serviceId,
         employee_id: employeeId,
@@ -239,78 +187,42 @@ export default function AppointmentsPage() {
         assigned_by: userId,
       })
 
-      const { data, error } = await supabase
-        .from('appointments')
-        .insert({
-          client_id: formData.clientId,
-          service_id: formData.serviceId,
-          employee_id: employeeId,
-          appointment_date: formData.appointmentDate,
-          appointment_time: formData.appointmentTime,
-          notes: formData.notes,
-          status: 'pending',
-          assigned_by: userId,
-        })
-        .select()
-
-      if (error) {
-        console.error('Error al crear cita:', error)
-        alert(`Error al crear la cita: ${error.message}`)
-        return
-      }
-
-      console.log('Cita creada exitosamente:', data)
-
-      setShowModal(false)
-      setFormData({
-        clientId: '',
-        serviceId: '',
-        employeeId: '',
-        appointmentDate: new Date().toISOString().split('T')[0],
-        appointmentTime: '',
-        notes: '',
-      })
-      
-      await loadAppointments()
-      alert('¡Cita creada exitosamente!')
-
-    } catch (error) {
-      console.error('Error inesperado:', error)
-      alert('Error inesperado al crear la cita')
+    if (error) {
+      alert(`Error: ${error.message}`)
+      return
     }
+
+    setShowModal(false)
+    setFormData({
+      clientId: '',
+      serviceId: '',
+      employeeId: '',
+      appointmentDate: new Date().toISOString().split('T')[0],
+      appointmentTime: '',
+      notes: '',
+    })
+    
+    await loadAppointments()
   }
 
   const handleStatusChange = async (appointmentId: string, newStatus: string) => {
-    const { error } = await supabase
+    await supabase
       .from('appointments')
       .update({ status: newStatus })
       .eq('id', appointmentId)
 
-    if (error) {
-      console.error('Error al actualizar estado:', error)
-      alert('Error al actualizar el estado')
-      return
-    }
-
     loadAppointments()
   }
 
-  const handleNoShow = async (appointmentId: string) => {
-    if (confirm('¿Marcar como "No llegó"?')) {
-      await handleStatusChange(appointmentId, 'no_show')
-    }
-  }
-
   const getStatusColor = (status: string) => {
-    const colors: Record<string, any> = {
-      pending: 'warning',
-      confirmed: 'default',
-      completed: 'success',
-      cancelled: 'danger',
-      no_show: 'destructive',
-      rescheduled: 'default',
+    const colors: Record<string, string> = {
+      pending: 'bg-amber-100 text-amber-700 border-amber-200',
+      confirmed: 'bg-cyan-100 text-cyan-700 border-cyan-200',
+      completed: 'bg-green-100 text-green-700 border-green-200',
+      cancelled: 'bg-red-100 text-red-700 border-red-200',
+      no_show: 'bg-gray-100 text-gray-700 border-gray-200',
     }
-    return colors[status] || 'default'
+    return colors[status] || 'bg-gray-100 text-gray-700'
   }
 
   const getStatusLabel = (status: string) => {
@@ -320,388 +232,452 @@ export default function AppointmentsPage() {
       completed: 'Completada',
       cancelled: 'Cancelada',
       no_show: 'No llegó',
-      rescheduled: 'Reagendada',
     }
     return labels[status] || status
   }
 
-  // Convertir citas a eventos del calendario
-  const calendarEvents: CalendarEvent[] = useMemo(() => {
-    return appointments.map(apt => {
-      const [hours, minutes] = apt.appointment_time.split(':')
-      const start = new Date(apt.appointment_date)
-      start.setHours(parseInt(hours), parseInt(minutes), 0)
-      
-      const end = new Date(start)
-      end.setMinutes(end.getMinutes() + apt.services.duration_minutes)
+  // Calendario
+  const monthStart = startOfMonth(currentMonth)
+  const monthEnd = endOfMonth(currentMonth)
+  const monthDays = eachDayOfInterval({ start: monthStart, end: monthEnd })
 
-      return {
-        id: apt.id,
-        title: `${apt.clients.full_name} - ${apt.services.name}`,
-        start,
-        end,
-        resource: apt,
-      }
+  // Obtener el día de la semana del primer día (0 = domingo)
+  const firstDayOfWeek = monthStart.getDay()
+  const emptyDays = Array(firstDayOfWeek).fill(null)
+
+  const prevMonth = () => setCurrentMonth(subMonths(currentMonth, 1))
+  const nextMonth = () => setCurrentMonth(addMonths(currentMonth, 1))
+
+  // Filtrar citas del día seleccionado
+  const dayAppointments = appointments
+    .filter(apt => {
+      if (apt.appointment_date !== selectedDate.toISOString().split('T')[0]) return false
+      if (filterService !== 'all' && apt.service_id !== filterService) return false
+      if (filterEmployee !== 'all' && apt.employee_id !== filterEmployee) return false
+      if (filterStatus !== 'all' && apt.status !== filterStatus) return false
+      return true
     })
-  }, [appointments])
+    .sort((a, b) => a.appointment_time.localeCompare(b.appointment_time))
 
-  const eventStyleGetter = useCallback((event: CalendarEvent) => {
-    const status = event.resource.status
-    const colors: Record<string, { backgroundColor: string; color: string }> = {
-      pending: { backgroundColor: '#FEF3C7', color: '#92400E' },
-      confirmed: { backgroundColor: '#DBEAFE', color: '#1E40AF' },
-      completed: { backgroundColor: '#D1FAE5', color: '#065F46' },
-      cancelled: { backgroundColor: '#FEE2E2', color: '#991B1B' },
-      no_show: { backgroundColor: '#FEE2E2', color: '#991B1B' },
-    }
-
-    return {
-      style: colors[status] || { backgroundColor: '#E5E7EB', color: '#374151' }
-    }
-  }, [])
+  // Timeline de 09:00 a 18:00
+  const timeSlots = Array.from({ length: 19 }, (_, i) => {
+    const hour = i + 9
+    return `${hour.toString().padStart(2, '0')}:00`
+  })
 
   return (
-    <div className="space-y-6">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-purple-50/30 p-8">
+      
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between mb-8">
         <div>
-  <h1 className="text-4xl font-bold text-gray-900 mb-2">
-    {userRole === 'estilista' ? 'Mis Citas' : 'Agenda'}
-  </h1>
-  <p className="text-gray-600">
-    {userRole === 'estilista' 
-      ? 'Gestiona tus citas asignadas' 
-      : 'Gestiona las citas de tu centro de estética'}
-  </p>
-</div>
-        <div className="flex gap-3">
-          <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-            <Button
-              variant={viewMode === 'calendar' ? 'primary' : 'ghost'}
-              size="sm"
-              onClick={() => setViewMode('calendar')}
-            >
-              <Grid className="w-4 h-4 mr-2" />
-              Calendario
-            </Button>
-            <Button
-              variant={viewMode === 'list' ? 'primary' : 'ghost'}
-              size="sm"
-              onClick={() => setViewMode('list')}
-            >
-              <List className="w-4 h-4 mr-2" />
-              Lista
-            </Button>
-          </div>
-          <Button onClick={() => setShowModal(true)}>
-            <Plus className="w-4 h-4 mr-2" />
-            Nueva Cita
-          </Button>
+          <h1 className="text-3xl font-bold text-gray-900">Citas</h1>
+          <p className="text-gray-600 mt-1">Gestiona todas las citas de tu estética</p>
         </div>
+        <button 
+          onClick={() => setShowModal(true)}
+          className="px-6 py-3 bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white font-semibold rounded-xl hover:shadow-lg hover:shadow-purple-500/50 transition-all flex items-center gap-2"
+        >
+          <Plus className="w-5 h-5" strokeWidth={2.5} />
+          Nueva Cita
+        </button>
       </div>
 
-      {/* Vista Calendario */}
-      {viewMode === 'calendar' && (
-        <Card className="p-6">
-          <div style={{ height: '700px' }}>
-            <Calendar
-              localizer={localizer}
-              events={calendarEvents}
-              startAccessor="start"
-              endAccessor="end"
-              style={{ height: '100%' }}
-              eventPropGetter={eventStyleGetter}
-              messages={{
-                next: 'Siguiente',
-                previous: 'Anterior',
-                today: 'Hoy',
-                month: 'Mes',
-                week: 'Semana',
-                day: 'Día',
-                agenda: 'Agenda',
-                date: 'Fecha',
-                time: 'Hora',
-                event: 'Cita',
-                noEventsInRange: 'No hay citas en este rango',
-                showMore: (total) => `+ Ver más (${total})`,
-              }}
-              onSelectEvent={(event) => {
-                alert(`Cita: ${event.title}\nCliente: ${event.resource.clients.full_name}\nEstado: ${getStatusLabel(event.resource.status)}`)
-              }}
-            />
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        
+        {/* Sidebar - Calendario y Filtros */}
+        <div className="lg:col-span-1 space-y-6">
+          
+          {/* Mini Calendario */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+            <div className="flex items-center justify-between mb-6">
+              <button onClick={prevMonth} className="w-8 h-8 flex items-center justify-center hover:bg-gray-100 rounded-lg transition-colors">
+                <ChevronLeft className="w-5 h-5 text-gray-600" strokeWidth={2} />
+              </button>
+              <h3 className="font-bold text-gray-900">
+                {format(currentMonth, 'MMMM yyyy', { locale: es })}
+              </h3>
+              <button onClick={nextMonth} className="w-8 h-8 flex items-center justify-center hover:bg-gray-100 rounded-lg transition-colors">
+                <ChevronRight className="w-5 h-5 text-gray-600" strokeWidth={2} />
+              </button>
+            </div>
+
+            {/* Días de la semana */}
+            <div className="grid grid-cols-7 gap-1 mb-2">
+              {['D', 'L', 'M', 'M', 'J', 'V', 'S'].map((day, i) => (
+                <div key={i} className="text-center text-xs font-semibold text-gray-500 py-2">
+                  {day}
+                </div>
+              ))}
+            </div>
+
+            {/* Días del mes */}
+            <div className="grid grid-cols-7 gap-1">
+              {emptyDays.map((_, i) => (
+                <div key={`empty-${i}`} className="aspect-square"></div>
+              ))}
+              {monthDays.map((day) => {
+                const hasAppointments = appointments.some(apt => apt.appointment_date === day.toISOString().split('T')[0])
+                const isSelected = isSameDay(day, selectedDate)
+                const isCurrentDay = isToday(day)
+                
+                return (
+                  <button
+                    key={day.toString()}
+                    onClick={() => setSelectedDate(day)}
+                    className={`aspect-square flex items-center justify-center text-sm rounded-lg transition-all relative ${
+                      isSelected 
+                        ? 'bg-gradient-to-br from-purple-600 to-fuchsia-600 text-white font-bold shadow-lg'
+                        : isCurrentDay
+                        ? 'bg-purple-100 text-purple-900 font-semibold'
+                        : 'hover:bg-gray-100 text-gray-700'
+                    }`}
+                  >
+                    {format(day, 'd')}
+                    {hasAppointments && !isSelected && (
+                      <div className="absolute bottom-1 w-1 h-1 bg-purple-600 rounded-full"></div>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
           </div>
-        </Card>
-      )}
 
-      {/* Vista Lista */}
-      {viewMode === 'list' && (
-        <>
-          {/* Filtro de fecha */}
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-4">
-                <CalendarIcon className="w-5 h-5 text-gray-400" />
-                <Input
-                  type="date"
-                  value={selectedDate.toISOString().split('T')[0]}
-                  onChange={(e) => setSelectedDate(new Date(e.target.value))}
-                />
-                <Button
-                  variant="outline"
-                  onClick={() => setSelectedDate(new Date())}
-                >
-                  Hoy
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Lista de citas */}
-          <Card>
-            <CardHeader className="border-b border-gray-100">
-              <CardTitle>
-                Citas del {selectedDate.toLocaleDateString('es-ES', {
-                  weekday: 'long',
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric'
-                })}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-6">
-              {appointments
-                .filter(apt => apt.appointment_date === selectedDate.toISOString().split('T')[0])
-                .length === 0 ? (
-                <div className="text-center py-12 text-gray-500">
-                  No hay citas para esta fecha
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {appointments
-                    .filter(apt => apt.appointment_date === selectedDate.toISOString().split('T')[0])
-                    .map((appointment) => (
-                      <div
-                        key={appointment.id}
-                        className="border rounded-lg p-4 hover:shadow-md transition-shadow"
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-3 mb-2">
-                              <Clock className="w-4 h-4 text-primary" />
-                              <span className="font-bold text-lg text-primary">
-                                {appointment.appointment_time}
-                              </span>
-                              <Badge variant={getStatusColor(appointment.status)}>
-                                {getStatusLabel(appointment.status)}
-                              </Badge>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4 text-sm">
-                              <div>
-                                <p className="text-gray-600">Cliente</p>
-                                <p className="font-medium text-gray-900">
-                                  {appointment.clients.full_name}
-                                </p>
-                                <p className="text-gray-500">{appointment.clients.phone}</p>
-                              </div>
-
-                              <div>
-                                <p className="text-gray-600">Servicio</p>
-                                <p className="font-medium text-gray-900">
-                                  {appointment.services.name}
-                                </p>
-                                <p className="text-gray-500">
-                                  {appointment.services.duration_minutes} min · ${appointment.services.price}
-                                </p>
-                              </div>
-
-                              <div>
-                                <p className="text-gray-600">Estilista</p>
-                                <p className="font-medium text-gray-900">
-                                  <User className="w-4 h-4 inline mr-1" />
-                                  {appointment.profiles.full_name}
-                                </p>
-                              </div>
-
-                              {appointment.notes && (
-                                <div>
-                                  <p className="text-gray-600">Notas</p>
-                                  <p className="text-gray-900">{appointment.notes}</p>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Acciones */}
-                          {appointment.status === 'pending' && (
-                            <div className="flex flex-col gap-2 ml-4">
-                              <Button
-                                size="sm"
-                                onClick={() => handleStatusChange(appointment.id, 'confirmed')}
-                              >
-                                Confirmar
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleNoShow(appointment.id)}
-                              >
-                                No llegó
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleStatusChange(appointment.id, 'cancelled')}
-                              >
-                                Cancelar
-                              </Button>
-                            </div>
-                          )}
-
-                          {appointment.status === 'confirmed' && (
-                            <div className="flex flex-col gap-2 ml-4">
-                              <Button
-                                size="sm"
-                                onClick={() => handleStatusChange(appointment.id, 'completed')}
-                              >
-                                Completar
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleNoShow(appointment.id)}
-                              >
-                                No llegó
-                              </Button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </>
-      )}
-
-      {/* Modal Nueva Cita */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto p-4">
-          <div className="bg-white rounded-2xl p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <h2 className="text-3xl font-bold mb-6 text-gray-900">Nueva Cita</h2>
-
-            <div className="space-y-5">
-              {/* Cliente */}
-              <Select
-                label="Cliente *"
-                value={formData.clientId}
-                onChange={(e) => setFormData({ ...formData, clientId: e.target.value })}
-                options={[
-                  { value: '', label: 'Seleccionar cliente...' },
-                  ...clients.map(c => ({ value: c.id, label: c.full_name }))
-                ]}
-              />
-
-              {/* Servicio */}
-              <Select
-                label="Servicio *"
-                value={formData.serviceId}
-                onChange={(e) => setFormData({ ...formData, serviceId: e.target.value })}
-                options={[
-                  { value: '', label: 'Seleccionar servicio...' },
-                  ...services.map(s => ({ 
-                    value: s.id, 
-                    label: `${s.name} (${s.duration_minutes} min - $${s.price})` 
-                  }))
-                ]}
-              />
-
-              {/* Fecha */}
-              <Input
-                label="Fecha *"
-                type="date"
-                value={formData.appointmentDate}
-                onChange={(e) => setFormData({ ...formData, appointmentDate: e.target.value })}
-                min={new Date().toISOString().split('T')[0]}
-              />
-
-              {/* Estilista (solo para cajeros/admin) */}
-              {userRole !== 'estilista' && (
-                <Select
-                  label="Estilista *"
-                  value={formData.employeeId}
-                  onChange={(e) => setFormData({ ...formData, employeeId: e.target.value })}
-                  options={[
-                    { value: '', label: 'Seleccionar estilista...' },
-                    ...stylists.map(s => ({ value: s.id, label: s.full_name }))
-                  ]}
-                />
-              )}
-
-              {/* Hora manual */}
+          {/* Filtros */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+            <h3 className="font-bold text-gray-900 mb-4">Filtros</h3>
+            
+            <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Hora de la cita *
-                </label>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Servicio</label>
                 <select
-                  value={formData.appointmentTime}
-                  onChange={(e) => setFormData({ ...formData, appointmentTime: e.target.value })}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent outline-none"
+                  value={filterService}
+                  onChange={(e) => setFilterService(e.target.value)}
+                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-purple-300 focus:ring-2 focus:ring-purple-100 outline-none text-sm"
                 >
-                  <option value="">Seleccionar hora...</option>
-                  <option value="09:00">09:00</option>
-                  <option value="09:30">09:30</option>
-                  <option value="10:00">10:00</option>
-                  <option value="10:30">10:30</option>
-                  <option value="11:00">11:00</option>
-                  <option value="11:30">11:30</option>
-                  <option value="12:00">12:00</option>
-                  <option value="12:30">12:30</option>
-                  <option value="13:00">13:00</option>
-                  <option value="13:30">13:30</option>
-                  <option value="14:00">14:00</option>
-                  <option value="14:30">14:30</option>
-                  <option value="15:00">15:00</option>
-                  <option value="15:30">15:30</option>
-                  <option value="16:00">16:00</option>
-                  <option value="16:30">16:30</option>
-                  <option value="17:00">17:00</option>
-                  <option value="17:30">17:30</option>
-                  <option value="18:00">18:00</option>
+                  <option value="all">Todos los servicios</option>
+                  {services.map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
                 </select>
               </div>
 
-              {/* Notas */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Notas (opcional)
-                </label>
-                <textarea
-                  value={formData.notes}
-                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                  placeholder="Notas adicionales..."
-                  rows={3}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent outline-none resize-none"
-                />
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Empleado</label>
+                <select
+                  value={filterEmployee}
+                  onChange={(e) => setFilterEmployee(e.target.value)}
+                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-purple-300 focus:ring-2 focus:ring-purple-100 outline-none text-sm"
+                >
+                  <option value="all">Todos los empleados</option>
+                  {stylists.map(s => (
+                    <option key={s.id} value={s.id}>{s.full_name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Estado</label>
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-purple-300 focus:ring-2 focus:ring-purple-100 outline-none text-sm"
+                >
+                  <option value="all">Todos</option>
+                  <option value="pending">Pendiente</option>
+                  <option value="confirmed">Confirmada</option>
+                  <option value="completed">Completada</option>
+                  <option value="cancelled">Cancelada</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Main - Timeline de Citas */}
+        <div className="lg:col-span-3">
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            
+            {/* Header del día */}
+            <div className="px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-purple-50 to-fuchsia-50">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900">
+                    {format(selectedDate, "EEEE, d 'de' MMMM 'de' yyyy", { locale: es })}
+                  </h2>
+                  <p className="text-sm text-gray-600 mt-1">
+                    {dayAppointments.length} {dayAppointments.length === 1 ? 'cita' : 'citas'}
+                  </p>
+                </div>
+                
+                {/* Toggle de vista */}
+                <div className="flex gap-2 bg-white rounded-lg p-1 border border-gray-200">
+                  <button
+                    onClick={() => setViewMode('day')}
+                    className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                      viewMode === 'day'
+                        ? 'bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white'
+                        : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    Día
+                  </button>
+                  <button
+                    onClick={() => setViewMode('week')}
+                    className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                      viewMode === 'week'
+                        ? 'bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white'
+                        : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    Semana
+                  </button>
+                  <button
+                    onClick={() => setViewMode('month')}
+                    className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                      viewMode === 'month'
+                        ? 'bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white'
+                        : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    Mes
+                  </button>
+                </div>
               </div>
             </div>
 
-            <div className="flex gap-3 mt-8">
-              <Button 
-                onClick={handleCreateAppointment} 
-                className="flex-1 py-3"
-                disabled={!formData.clientId || !formData.serviceId || !formData.appointmentTime || (userRole !== 'estilista' && !formData.employeeId)}
-              >
-                Crear Cita
-              </Button>
-              <Button
-                variant="outline"
+            {/* Timeline */}
+            <div className="p-6">
+              {dayAppointments.length === 0 ? (
+                <div className="text-center py-16">
+                  <CalendarIcon className="w-16 h-16 text-gray-300 mx-auto mb-4" strokeWidth={1.5} />
+                  <p className="text-gray-500 font-medium">No hay citas para este día</p>
+                  <p className="text-gray-400 text-sm mt-1">Selecciona otra fecha o crea una nueva cita</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {timeSlots.map(timeSlot => {
+                    const appointmentsAtTime = dayAppointments.filter(apt => 
+                      apt.appointment_time.startsWith(timeSlot.slice(0, 2))
+                    )
+
+                    return (
+                      <div key={timeSlot} className="flex gap-4">
+                        {/* Time label */}
+                        <div className="w-16 text-sm font-semibold text-gray-500 pt-2">
+                          {timeSlot}
+                        </div>
+
+                        {/* Appointments */}
+                        <div className="flex-1 space-y-2">
+                          {appointmentsAtTime.length > 0 ? (
+                            appointmentsAtTime.map(apt => (
+                              <div
+                                key={apt.id}
+                                className={`rounded-xl p-4 border-2 ${getStatusColor(apt.status)} hover:shadow-md transition-all cursor-pointer`}
+                              >
+                                <div className="flex items-start gap-3">
+                                  {/* Avatar */}
+                                  <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-fuchsia-500 rounded-lg flex items-center justify-center shadow-md shrink-0">
+                                    <span className="text-white font-bold text-sm">
+                                      {apt.clients.full_name.charAt(0)}
+                                    </span>
+                                  </div>
+
+                                  {/* Info */}
+                                  <div className="flex-1 min-w-0">
+                                    <p className="font-bold text-gray-900">{apt.clients.full_name}</p>
+                                    <p className="text-sm text-gray-600">{apt.services.name}</p>
+                                    <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
+                                      <span className="flex items-center gap-1">
+                                        <Clock className="w-3 h-3" />
+                                        {apt.appointment_time} - {
+                                          (() => {
+                                            const [h, m] = apt.appointment_time.split(':').map(Number)
+                                            const totalMinutes = h * 60 + m + apt.services.duration_minutes
+                                            const endHour = Math.floor(totalMinutes / 60)
+                                            const endMin = totalMinutes % 60
+                                            return `${endHour.toString().padStart(2, '0')}:${endMin.toString().padStart(2, '0')}`
+                                          })()
+                                        }
+                                      </span>
+                                      <span className="flex items-center gap-1">
+                                        <User className="w-3 h-3" />
+                                        {apt.profiles.full_name}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  {/* Status badge */}
+                                  <span className="px-3 py-1 text-xs font-semibold rounded-lg shrink-0">
+                                    {getStatusLabel(apt.status)}
+                                  </span>
+                                </div>
+
+                                {/* Actions (solo si está pendiente o confirmada) */}
+                                {(apt.status === 'pending' || apt.status === 'confirmed') && (
+                                  <div className="flex gap-2 mt-3 pt-3 border-t border-current/10">
+                                    {apt.status === 'pending' && (
+                                      <button
+                                        onClick={() => handleStatusChange(apt.id, 'confirmed')}
+                                        className="px-3 py-1.5 bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-semibold rounded-lg transition-colors"
+                                      >
+                                        Confirmar
+                                      </button>
+                                    )}
+                                    {apt.status === 'confirmed' && (
+                                      <button
+                                        onClick={() => handleStatusChange(apt.id, 'completed')}
+                                        className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold rounded-lg transition-colors"
+                                      >
+                                        Completar
+                                      </button>
+                                    )}
+                                    <button
+                                      onClick={() => handleStatusChange(apt.id, 'cancelled')}
+                                      className="px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 text-xs font-semibold rounded-lg transition-colors"
+                                    >
+                                      Cancelar
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            ))
+                          ) : (
+                            <div className="h-2"></div>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Modal Nueva Cita */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full overflow-hidden max-h-[90vh] overflow-y-auto">
+            
+            {/* Header */}
+            <div className="bg-gradient-to-r from-purple-600 to-fuchsia-600 px-6 py-5 flex items-center justify-between sticky top-0 z-10">
+              <h2 className="text-2xl font-bold text-white">Nueva Cita</h2>
+              <button 
                 onClick={() => setShowModal(false)}
-                className="flex-1 py-3"
+                className="w-8 h-8 bg-white/20 hover:bg-white/30 rounded-lg flex items-center justify-center transition-colors"
+              >
+                <X className="w-5 h-5 text-white" strokeWidth={2.5} />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 space-y-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Cliente *</label>
+                  <select
+                    value={formData.clientId}
+                    onChange={(e) => setFormData({ ...formData, clientId: e.target.value })}
+                    className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl focus:bg-white focus:border-purple-300 focus:ring-4 focus:ring-purple-100 outline-none transition-all"
+                  >
+                    <option value="">Seleccionar cliente...</option>
+                    {clients.map(c => (
+                      <option key={c.id} value={c.id}>{c.full_name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Servicio *</label>
+                  <select
+                    value={formData.serviceId}
+                    onChange={(e) => setFormData({ ...formData, serviceId: e.target.value })}
+                    className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl focus:bg-white focus:border-purple-300 focus:ring-4 focus:ring-purple-100 outline-none transition-all"
+                  >
+                    <option value="">Seleccionar servicio...</option>
+                    {services.map(s => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} ({s.duration_minutes} min - ${s.price})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Fecha *</label>
+                  <input
+                    type="date"
+                    value={formData.appointmentDate}
+                    onChange={(e) => setFormData({ ...formData, appointmentDate: e.target.value })}
+                    min={new Date().toISOString().split('T')[0]}
+                    className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl focus:bg-white focus:border-purple-300 focus:ring-4 focus:ring-purple-100 outline-none transition-all"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Hora *</label>
+                  <select
+                    value={formData.appointmentTime}
+                    onChange={(e) => setFormData({ ...formData, appointmentTime: e.target.value })}
+                    className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl focus:bg-white focus:border-purple-300 focus:ring-4 focus:ring-purple-100 outline-none transition-all"
+                  >
+                    <option value="">Seleccionar hora...</option>
+                    {Array.from({ length: 19 }, (_, i) => {
+                      const hour = i + 9
+                      return [`${hour.toString().padStart(2, '0')}:00`, `${hour.toString().padStart(2, '0')}:30`]
+                    }).flat().map(time => (
+                      <option key={time} value={time}>{time}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {userRole !== 'estilista' && (
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Estilista *</label>
+                    <select
+                      value={formData.employeeId}
+                      onChange={(e) => setFormData({ ...formData, employeeId: e.target.value })}
+                      className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl focus:bg-white focus:border-purple-300 focus:ring-4 focus:ring-purple-100 outline-none transition-all"
+                    >
+                      <option value="">Seleccionar estilista...</option>
+                      {stylists.map(s => (
+                        <option key={s.id} value={s.id}>{s.full_name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Notas</label>
+                  <textarea
+                    value={formData.notes}
+                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                    placeholder="Notas adicionales..."
+                    rows={3}
+                    className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl focus:bg-white focus:border-purple-300 focus:ring-4 focus:ring-purple-100 outline-none transition-all resize-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 bg-gray-50 flex gap-3 sticky bottom-0">
+              <button
+                onClick={() => setShowModal(false)}
+                className="flex-1 px-4 py-3 bg-white border-2 border-gray-200 text-gray-700 font-semibold rounded-xl hover:bg-gray-50 transition-colors"
               >
                 Cancelar
-              </Button>
+              </button>
+              <button
+                onClick={handleCreateAppointment}
+                disabled={!formData.clientId || !formData.serviceId || !formData.appointmentTime || (userRole !== 'estilista' && !formData.employeeId)}
+                className="flex-1 px-4 py-3 bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white font-semibold rounded-xl hover:shadow-lg hover:shadow-purple-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Crear Cita
+              </button>
             </div>
           </div>
         </div>
