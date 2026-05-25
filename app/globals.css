@@ -1,26 +1,75 @@
 @import "tailwindcss";
 
+@theme {
+  --color-primary: #A855F7;
+  --color-primary-dark: #7C3AED;
+  --color-primary-light: #C084FC;
+  --color-accent: #D946EF;
+}
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --primary: #A855F7;
+  --primary-dark: #7C3AED;
+  --primary-light: #C084FC;
+  --accent: #D946EF;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  body {
+    @apply bg-gray-50 text-gray-900;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer utilities {
+  .bg-primary {
+    background-color: var(--primary);
+  }
+  
+  .bg-primary-dark {
+    background-color: var(--primary-dark);
+  }
+  
+  .bg-primary-light {
+    background-color: var(--primary-light);
+  }
+  
+  .bg-accent {
+    background-color: var(--accent);
+  }
+  
+  .text-primary {
+    color: var(--primary);
+  }
+  
+  .text-primary-dark {
+    color: var(--primary-dark);
+  }
+  
+  .text-primary-light {
+    color: var(--primary-light);
+  }
+  
+  .text-accent {
+    color: var(--accent);
+  }
+  
+  .border-primary {
+    border-color: var(--primary);
+  }
+  
+  .ring-primary {
+    --tw-ring-color: var(--primary);
+  }
+  
+  .hover\:bg-primary-dark:hover {
+    background-color: var(--primary-dark);
+  }
+  
+  .hover\:bg-primary:hover {
+    background-color: var(--primary);
+  }
+  
+  .focus\:ring-primary:focus {
+    --tw-ring-color: var(--primary);
+  }
 }
