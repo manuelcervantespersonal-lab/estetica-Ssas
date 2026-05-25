@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import { Home, Users, Scissors, Calendar, Package, DollarSign, Settings, LogOut } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
-
+import Notifications from './Notifications'
 export default function Sidebar() {
   const pathname = usePathname()
   const [userRole, setUserRole] = useState<string | null>(null)
@@ -98,19 +98,21 @@ export default function Sidebar() {
       </div>
 
       {/* User Info */}
-      <div className="px-6 py-4 border-b border-white/10">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
-            <span className="text-white font-semibold text-lg">
-              {userName.charAt(0).toUpperCase()}
-            </span>
-          </div>
-          <div>
-            <p className="text-white font-medium text-sm">{userName}</p>
-            <p className="text-primary-light text-xs">{getRoleName()}</p>
-          </div>
-        </div>
-      </div>
+<div className="px-6 py-4 border-b border-white/10">
+  <div className="flex items-center gap-3">
+    <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
+      <span className="text-white font-semibold text-lg">
+        {userName.charAt(0).toUpperCase()}
+      </span>
+    </div>
+    <div className="flex-1">
+      <p className="text-white font-medium text-sm">{userName}</p>
+      <p className="text-primary-light text-xs">{getRoleName()}</p>
+    </div>
+    {/* AGREGAR AQUÍ */}
+    <Notifications />
+  </div>
+</div>
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto px-3 py-4">
