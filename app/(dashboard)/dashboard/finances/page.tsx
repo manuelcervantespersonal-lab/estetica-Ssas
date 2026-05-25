@@ -9,6 +9,9 @@ import { Plus, TrendingUp, TrendingDown, DollarSign, Calendar } from 'lucide-rea
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns'
 import { es } from 'date-fns/locale'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
+import { FileDown } from 'lucide-react'
 
 interface Payment {
   id: string
@@ -105,7 +108,144 @@ export default function FinancesPage() {
         balance: ingresos - gastos
       })
     }
-
+    const generatePDF = () => {
+  const doc = new jsPDF()
+  
+  // Configuración
+  const pageWidth = doc.internal.pageSize.getWidth()
+  const pageHeight = doc.internal.pageSize.getHeight()
+  
+  // Header
+  doc.setFillColor(139, 92, 246) // Color primary
+  doc.rect(0, 0, pageWidth, 40, 'F')
+  
+  doc.setTextColor(255, 255, 255)
+  doc.setFontSize(24)
+  doc.text('Estética Pro', 20, 20)
+  
+  doc.setFontSize(14)
+  doc.text('Reporte Financiero', 20, 30)
+  
+  // Fecha del reporte
+  doc.setFontSize(10)
+  doc.setTextColor(100, 100, 100)
+  doc.text(`Generado: ${format(new Date(), "d 'de' MMMM 'de' yyyy", { locale: es })}`, 20, 50)
+  doc.text(`Período: ${format(selectedMonth, "MMMM yyyy", { locale: es })}`, 20, 56)
+  
+  // Resumen
+  doc.setFontSize(16)
+  doc.setTextColor(0, 0, 0)
+  doc.text('Resumen del Mes', 20, 70)
+  
+  // Tabla de resumen
+  autoTable(doc, {
+    startY: 75,
+    head: [['Concepto', 'Monto']],
+    body: [
+      ['Ingresos', `$${totalIngresos.toLocaleString()}`],
+      ['Gastos', `$${totalGastos.toLocaleString()}`],
+      ['Balance', `$${balance.toLocaleString()}`],
+    ],
+    theme: 'grid',
+    headStyles: { fillColor: [139, 92, 246] },
+    styles: { fontSize: 12 },
+    columnStyles: {
+      0: { cellWidth: 100 },
+      1: { cellWidth: 80, halign: 'right', fontStyle: 'bold' }
+    }
+  })
+  
+  // Gastos detallados
+  if (expenses.length > 0) {
+    doc.setFontSize(16)
+    doc.text('Gastos del Mes', 20, (doc as any).lastAutoTable.finalY + 15)
+    
+    autoTable(doc, {
+      startY: (doc as any).lastAutoTable.finalY + 20,
+      head: [['Fecha', 'Descripción', 'Categoría', 'Monto']],
+      body: expenses.map(expense => [
+        format(new Date(expense.expense_date), 'dd/MM/yyyy'),
+        expense.description,
+        expense.category,
+        `$${Number(expense.amount).toLocaleString()}`
+      ]),
+      theme: 'striped',
+      headStyles: { fillColor: [139, 92, 246] },
+      styles: { fontSize: 10 },
+      columnStyles: {
+        0: { cellWidth: 30 },
+        1: { cellWidth: 70 },
+        2: { cellWidth: 40 },
+        3: { cellWidth: 40, halign: 'right' }
+      }
+    })
+  }
+  
+  // Totales por categoría
+  if (categoryData.length > 0) {
+    const yPos = (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY + 15 : 200
+    
+    // Nueva página si no hay espacio
+    if (yPos > pageHeight - 80) {
+      doc.addPage()
+      doc.setFontSize(16)
+      doc.text('Gastos por Categoría', 20, 20)
+      
+      autoTable(doc, {
+        startY: 25,
+        head: [['Categoría', 'Monto', '%']],
+        body: categoryData.map(cat => {
+          const percentage = ((cat.value / totalGastos) * 100).toFixed(1)
+          return [
+            cat.name,
+            `$${cat.value.toLocaleString()}`,
+            `${percentage}%`
+          ]
+        }),
+        theme: 'grid',
+        headStyles: { fillColor: [139, 92, 246] },
+        styles: { fontSize: 10 }
+      })
+    } else {
+      doc.setFontSize(16)
+      doc.text('Gastos por Categoría', 20, yPos)
+      
+      autoTable(doc, {
+        startY: yPos + 5,
+        head: [['Categoría', 'Monto', '%']],
+        body: categoryData.map(cat => {
+          const percentage = ((cat.value / totalGastos) * 100).toFixed(1)
+          return [
+            cat.name,
+            `$${cat.value.toLocaleString()}`,
+            `${percentage}%`
+          ]
+        }),
+        theme: 'grid',
+        headStyles: { fillColor: [139, 92, 246] },
+        styles: { fontSize: 10 }
+      })
+    }
+  }
+  
+  // Footer en todas las páginas
+  const pageCount = (doc as any).internal.getNumberOfPages()
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i)
+    doc.setFontSize(8)
+    doc.setTextColor(150, 150, 150)
+    doc.text(
+      `Página ${i} de ${pageCount}`,
+      pageWidth / 2,
+      pageHeight - 10,
+      { align: 'center' }
+    )
+  }
+  
+  // Guardar PDF
+  const fileName = `reporte-finanzas-${format(selectedMonth, 'yyyy-MM')}.pdf`
+  doc.save(fileName)
+}
     setMonthlyData(months)
 
     // Datos por categoría de gastos
@@ -296,13 +436,23 @@ export default function FinancesPage() {
         </Card>
       </div>
 
-      {/* Botones de acción */}
-      <div className="flex gap-3">
-        <Button onClick={() => setShowExpenseModal(true)}>
-          <Plus className="w-4 h-4 mr-2" />
-          Registrar Gasto
-        </Button>
-      </div>
+     {/* Botones de acción */}
+<div className="flex gap-3">
+  <Button onClick={() => setShowExpenseModal(true)}>
+    <Plus className="w-4 h-4 mr-2" />
+    Registrar Gasto
+  </Button>
+  
+  {/* AGREGAR ESTE BOTÓN */}
+  <Button 
+    onClick={generatePDF} 
+    variant="outline"
+    className="border-primary text-primary hover:bg-primary hover:text-white"
+  >
+    <FileDown className="w-4 h-4 mr-2" />
+    Exportar PDF
+  </Button>
+</div>
 
       {/* Lista de Gastos */}
       <Card>
