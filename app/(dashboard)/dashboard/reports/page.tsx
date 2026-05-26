@@ -37,6 +37,9 @@ import {
 } from 'recharts'
 import { format, subDays, startOfMonth, endOfMonth } from 'date-fns'
 import { es } from 'date-fns/locale'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
+// xlsx se importa dinámicamente en la función, no necesita import estático
 
 interface ReportStats {
   totalRevenue: number
@@ -370,12 +373,192 @@ export default function ReportsPage() {
   }
 
   const handleExportPDF = () => {
-    alert('Exportar a PDF - Funcionalidad en desarrollo')
+  const doc = new jsPDF()
+  const pageWidth = doc.internal.pageSize.getWidth()
+  const pageHeight = doc.internal.pageSize.getHeight()
+
+  // Header
+  doc.setFillColor(139, 92, 246)
+  doc.rect(0, 0, pageWidth, 40, 'F')
+  doc.setTextColor(255, 255, 255)
+  doc.setFontSize(22)
+  doc.text('Estética Pro', 20, 20)
+  doc.setFontSize(13)
+  doc.text('Reporte de Análisis', 20, 30)
+
+  doc.setTextColor(100, 100, 100)
+  doc.setFontSize(10)
+  doc.text(`Generado: ${format(new Date(), "d 'de' MMMM 'de' yyyy", { locale: es })}`, 20, 50)
+  doc.text(`Período: ${dateRange.from} al ${dateRange.to}`, 20, 56)
+
+  // Resumen financiero
+  doc.setTextColor(0, 0, 0)
+  doc.setFontSize(15)
+  doc.text('Resumen Financiero', 20, 70)
+
+  const summaryRows = [
+    ['Ingresos Totales', `$${stats.totalRevenue.toLocaleString()}`],
+    ...(userRole !== 'estilista' ? [
+      ['Gastos', `$${stats.totalExpenses.toLocaleString()}`],
+    ] : []),
+    [userRole === 'estilista' ? 'Mis Comisiones' : 'Ganancias Netas', `$${stats.totalProfit.toLocaleString()}`],
+    ['Citas Completadas', `${stats.completedAppointments} de ${stats.appointmentsCount}`],
+  ]
+
+  autoTable(doc, {
+    startY: 75,
+    head: [['Concepto', 'Valor']],
+    body: summaryRows,
+    theme: 'grid',
+    headStyles: { fillColor: [139, 92, 246] },
+    styles: { fontSize: 11 },
+    columnStyles: {
+      0: { cellWidth: 100 },
+      1: { cellWidth: 70, halign: 'right', fontStyle: 'bold' }
+    }
+  })
+
+  // Servicios más vendidos (solo admin/cajero)
+  if ((userRole === 'admin' || userRole === 'cajero') && stats.servicesData.length > 0) {
+    doc.setFontSize(15)
+    doc.setTextColor(0, 0, 0)
+    doc.text('Servicios Más Vendidos', 20, doc.lastAutoTable.finalY + 15)
+
+    autoTable(doc, {
+      startY: doc.lastAutoTable.finalY + 20,
+      head: [['Servicio', 'Citas', 'Ingresos']],
+      body: stats.servicesData.map(s => [
+        s.name,
+        s.value,
+        `$${s.revenue.toLocaleString()}`
+      ]),
+      theme: 'striped',
+      headStyles: { fillColor: [139, 92, 246] },
+      styles: { fontSize: 10 },
+      columnStyles: { 2: { halign: 'right' } }
+    })
   }
 
-  const handleExportExcel = () => {
-    alert('Exportar a Excel - Funcionalidad en desarrollo')
+  // Rendimiento por estilista (solo admin)
+  if (userRole === 'admin' && stats.employeeData.length > 0) {
+    const yPos = doc.lastAutoTable?.finalY + 15 || 200
+    if (yPos > pageHeight - 80) doc.addPage()
+
+    doc.setFontSize(15)
+    doc.setTextColor(0, 0, 0)
+    doc.text('Rendimiento por Estilista', 20, doc.lastAutoTable ? doc.lastAutoTable.finalY + 15 : 20)
+
+    autoTable(doc, {
+      startY: doc.lastAutoTable ? doc.lastAutoTable.finalY + 20 : 25,
+      head: [['Estilista', 'Citas', 'Ingresos']],
+      body: stats.employeeData.map(e => [
+        e.name,
+        e.citas,
+        `$${e.ingresos.toLocaleString()}`
+      ]),
+      theme: 'striped',
+      headStyles: { fillColor: [139, 92, 246] },
+      styles: { fontSize: 10 },
+      columnStyles: { 2: { halign: 'right' } }
+    })
   }
+
+  // Actividad reciente
+  if (stats.recentActivity.length > 0) {
+    const yPos = doc.lastAutoTable?.finalY + 15 || 200
+    if (yPos > pageHeight - 80) doc.addPage()
+
+    doc.setFontSize(15)
+    doc.setTextColor(0, 0, 0)
+    doc.text('Actividad Reciente', 20, doc.lastAutoTable ? doc.lastAutoTable.finalY + 15 : 20)
+
+    autoTable(doc, {
+      startY: doc.lastAutoTable ? doc.lastAutoTable.finalY + 20 : 25,
+      head: [['Fecha', 'Cliente', 'Servicio', 'Método', 'Monto']],
+      body: stats.recentActivity.map((a: any) => [
+        format(new Date(a.payment_date), 'dd/MM/yyyy'),
+        a.appointments?.clients?.full_name || '-',
+        a.appointments?.services?.name || '-',
+        a.payment_method,
+        `$${Number(a.amount).toLocaleString()}`
+      ]),
+      theme: 'striped',
+      headStyles: { fillColor: [139, 92, 246] },
+      styles: { fontSize: 9 },
+      columnStyles: { 4: { halign: 'right' } }
+    })
+  }
+
+  // Paginación
+  const pageCount = doc.internal.getNumberOfPages()
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i)
+    doc.setFontSize(8)
+    doc.setTextColor(150, 150, 150)
+    doc.text(`Página ${i} de ${pageCount}`, pageWidth / 2, pageHeight - 10, { align: 'center' })
+  }
+
+  doc.save(`reporte-${dateRange.from}-${dateRange.to}.pdf`)
+}
+
+const handleExportExcel = () => {
+  import('xlsx').then((XLSX) => {
+    const wb = XLSX.utils.book_new()
+
+    // Hoja 1: Resumen
+    const summaryData = [
+      ['Reporte Estética Pro'],
+      [`Período: ${dateRange.from} al ${dateRange.to}`],
+      [],
+      ['Concepto', 'Valor'],
+      ['Ingresos Totales', stats.totalRevenue],
+      ...(userRole !== 'estilista' ? [['Gastos', stats.totalExpenses]] : []),
+      [userRole === 'estilista' ? 'Mis Comisiones' : 'Ganancias Netas', stats.totalProfit],
+      ['Citas Completadas', stats.completedAppointments],
+      ['Total Citas', stats.appointmentsCount],
+    ]
+    const ws1 = XLSX.utils.aoa_to_sheet(summaryData)
+    XLSX.utils.book_append_sheet(wb, ws1, 'Resumen')
+
+    // Hoja 2: Servicios (admin/cajero)
+    if ((userRole === 'admin' || userRole === 'cajero') && stats.servicesData.length > 0) {
+      const servicesData = [
+        ['Servicio', 'Citas', 'Ingresos'],
+        ...stats.servicesData.map(s => [s.name, s.value, s.revenue])
+      ]
+      const ws2 = XLSX.utils.aoa_to_sheet(servicesData)
+      XLSX.utils.book_append_sheet(wb, ws2, 'Servicios')
+    }
+
+    // Hoja 3: Estilistas (admin)
+    if (userRole === 'admin' && stats.employeeData.length > 0) {
+      const employeeData = [
+        ['Estilista', 'Citas', 'Ingresos'],
+        ...stats.employeeData.map(e => [e.name, e.citas, e.ingresos])
+      ]
+      const ws3 = XLSX.utils.aoa_to_sheet(employeeData)
+      XLSX.utils.book_append_sheet(wb, ws3, 'Estilistas')
+    }
+
+    // Hoja 4: Actividad reciente
+    if (stats.recentActivity.length > 0) {
+      const activityData = [
+        ['Fecha', 'Cliente', 'Servicio', 'Método de Pago', 'Monto'],
+        ...stats.recentActivity.map((a: any) => [
+          format(new Date(a.payment_date), 'dd/MM/yyyy'),
+          a.appointments?.clients?.full_name || '-',
+          a.appointments?.services?.name || '-',
+          a.payment_method,
+          Number(a.amount)
+        ])
+      ]
+      const ws4 = XLSX.utils.aoa_to_sheet(activityData)
+      XLSX.utils.book_append_sheet(wb, ws4, 'Actividad')
+    }
+
+    XLSX.writeFile(wb, `reporte-${dateRange.from}-${dateRange.to}.xlsx`)
+  })
+}
 
   const changePeriod = (period: 'week' | 'month' | 'year') => {
     setSelectedPeriod(period)
