@@ -155,7 +155,8 @@ export default function ReportsPage() {
           .gte('appointment_date', dateRange.from)
           .lte('appointment_date', dateRange.to)
 
-        const revenue = appointments?.reduce((sum, apt) => sum + (apt.services?.price || 0), 0) || 0
+        const revenue = appointments?.reduce((sum, apt: any) => sum + (apt.services?.price || 0), 0) || 0
+
 
         setStats(prev => ({
           ...prev,
@@ -309,7 +310,7 @@ export default function ReportsPage() {
           return {
             name: emp.full_name,
             citas: appointments?.length || 0,
-            ingresos: appointments?.reduce((sum, apt) => sum + (apt.services?.price || 0), 0) || 0
+            ingresos: appointments?.reduce((sum, apt: any) => sum + (apt.services?.price || 0), 0) || 0
           }
         }) || []
       )
