@@ -2,18 +2,36 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Home, Users, Scissors, Calendar, Package, DollarSign, Settings, LogOut, Sparkles, TrendingUp, FileText, Bell } from 'lucide-react'
+import { Home, Users, Scissors, Calendar, Package, DollarSign, Settings, LogOut, Sparkles, TrendingUp, FileText, Bell, X, AlertTriangle } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
+import { format } from 'date-fns'
+import { es } from 'date-fns/locale'
+
+interface Notification {
+  id: string
+  type: 'appointment' | 'stock' | 'invoice'
+  title: string
+  message: string
+  time: Date
+  read: boolean
+}
 
 export default function Sidebar() {
   const pathname = usePathname()
   const [userRole, setUserRole] = useState<string | null>(null)
   const [userName, setUserName] = useState<string>('')
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [showNotifications, setShowNotifications] = useState(false)
+  const [unreadCount, setUnreadCount] = useState(0)
   const supabase = createClient()
 
   useEffect(() => {
     loadUserInfo()
+    loadNotifications()
+    // Actualizar notificaciones cada minuto
+    const interval = setInterval(loadNotifications, 60000)
+    return () => clearInterval(interval)
   }, [])
 
   const loadUserInfo = async () => {
@@ -30,6 +48,111 @@ export default function Sidebar() {
         setUserRole(profile.role)
         setUserName(profile.full_name || user.email?.split('@')[0] || 'Usuario')
       }
+    }
+  }
+
+  const loadNotifications = async () => {
+    const notifs: Notification[] = []
+    const today = new Date().toISOString().split('T')[0]
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+
+      // Notificación 1: Citas pendientes de hoy
+      let appointmentsQuery = supabase
+        .from('appointments')
+        .select('*, clients(full_name)')
+        .eq('appointment_date', today)
+        .eq('status', 'pending')
+
+      if (profile?.role === 'estilista') {
+        appointmentsQuery = appointmentsQuery.eq('employee_id', user.id)
+      }
+
+      const { data: pendingAppts } = await appointmentsQuery
+
+      if (pendingAppts && pendingAppts.length > 0) {
+        notifs.push({
+          id: 'pending-appts',
+          type: 'appointment',
+          title: 'Citas pendientes',
+          message: `Tienes ${pendingAppts.length} cita(s) pendiente(s) por confirmar hoy`,
+          time: new Date(),
+          read: false
+        })
+      }
+
+      // Notificación 2: Stock bajo (solo admin y cajero)
+      if (profile?.role !== 'estilista') {
+        const { data: inventory } = await supabase
+          .from('inventory')
+          .select('product_name, current_quantity, min_quantity')
+
+        const lowStock = inventory?.filter(item => 
+          item.current_quantity <= item.min_quantity
+        ) || []
+
+        if (lowStock.length > 0) {
+          notifs.push({
+            id: 'low-stock',
+            type: 'stock',
+            title: 'Stock bajo',
+            message: `${lowStock.length} producto(s) con stock bajo`,
+            time: new Date(),
+            read: false
+          })
+        }
+
+        // Notificación 3: Facturas pendientes
+        const { data: pendingInvoices } = await supabase
+          .from('invoices')
+          .select('invoice_number')
+          .eq('status', 'pending')
+
+        if (pendingInvoices && pendingInvoices.length > 0) {
+          notifs.push({
+            id: 'pending-invoices',
+            type: 'invoice',
+            title: 'Facturas pendientes',
+            message: `${pendingInvoices.length} factura(s) pendiente(s) de pago`,
+            time: new Date(),
+            read: false
+          })
+        }
+      }
+
+      setNotifications(notifs)
+      setUnreadCount(notifs.filter(n => !n.read).length)
+    } catch (error) {
+      console.error('Error cargando notificaciones:', error)
+    }
+  }
+
+  const markAsRead = (id: string) => {
+    setNotifications(prev => prev.map(n => 
+      n.id === id ? { ...n, read: true } : n
+    ))
+    setUnreadCount(prev => Math.max(0, prev - 1))
+  }
+
+  const markAllAsRead = () => {
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })))
+    setUnreadCount(0)
+  }
+
+  const getNotificationIcon = (type: string) => {
+    switch (type) {
+      case 'appointment': return <Calendar className="w-5 h-5 text-purple-600" />
+      case 'stock': return <AlertTriangle className="w-5 h-5 text-red-600" />
+      case 'invoice': return <DollarSign className="w-5 h-5 text-green-600" />
+      default: return <Bell className="w-5 h-5 text-gray-600" />
     }
   }
 
@@ -50,6 +173,7 @@ export default function Sidebar() {
         { name: 'Servicios', href: '/dashboard/services', icon: Scissors },
         { name: 'Citas', href: '/dashboard/appointments', icon: Calendar },
         { name: 'Inventario', href: '/dashboard/inventory', icon: Package },
+        { name: 'Facturación', href: '/dashboard/invoicing', icon: FileText },
         { name: 'Finanzas', href: '/dashboard/finances', icon: DollarSign },
         { name: 'Reportes', href: '/dashboard/reports', icon: TrendingUp },
         { name: 'Configuración', href: '/dashboard/settings', icon: Settings },
@@ -63,7 +187,9 @@ export default function Sidebar() {
         { name: 'Servicios', href: '/dashboard/services', icon: Scissors },
         { name: 'Citas', href: '/dashboard/appointments', icon: Calendar },
         { name: 'Inventario', href: '/dashboard/inventory', icon: Package },
+        { name: 'Facturación', href: '/dashboard/invoicing', icon: FileText },
         { name: 'Finanzas', href: '/dashboard/finances', icon: DollarSign },
+        { name: 'Reportes', href: '/dashboard/reports', icon: TrendingUp },
       ]
     }
 
@@ -71,6 +197,8 @@ export default function Sidebar() {
       return [
         ...baseNav,
         { name: 'Mis Citas', href: '/dashboard/appointments', icon: Calendar },
+        { name: 'Mis Facturas', href: '/dashboard/invoicing', icon: FileText },
+        { name: 'Mis Reportes', href: '/dashboard/reports', icon: TrendingUp },
       ]
     }
 
@@ -124,10 +252,19 @@ export default function Sidebar() {
                 <p className="text-white font-semibold text-sm truncate">{userName}</p>
                 <p className="text-purple-200 text-xs font-medium">{getRoleName()}</p>
               </div>
-              <button className="w-8 h-8 bg-white/10 hover:bg-white/20 rounded-lg flex items-center justify-center transition-colors border border-white/20 relative group">
-                <Bell className="w-4 h-4 text-white" strokeWidth={2} />
-                <span className="absolute top-0 right-0 w-2 h-2 bg-fuchsia-500 rounded-full border-2 border-purple-700"></span>
-              </button>
+              <div className="relative">
+                <button 
+                  onClick={() => setShowNotifications(!showNotifications)}
+                  className="w-8 h-8 bg-white/10 hover:bg-white/20 rounded-lg flex items-center justify-center transition-colors border border-white/20 relative group"
+                >
+                  <Bell className="w-4 h-4 text-white" strokeWidth={2} />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 w-4 h-4 bg-fuchsia-500 rounded-full border-2 border-purple-700 text-white text-[10px] font-bold flex items-center justify-center">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -165,6 +302,88 @@ export default function Sidebar() {
           )
         })}
       </nav>
+
+      {/* Panel de Notificaciones */}
+      {showNotifications && (
+        <>
+          {/* Overlay */}
+          <div 
+            className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40"
+            onClick={() => setShowNotifications(false)}
+          />
+          
+          {/* Panel */}
+          <div className="fixed left-72 top-32 w-96 bg-white rounded-2xl shadow-2xl border border-gray-200 z-50 max-h-[500px] overflow-hidden flex flex-col">
+            <div className="p-4 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-purple-50 to-fuchsia-50">
+              <div>
+                <h3 className="font-bold text-lg text-gray-900">Notificaciones</h3>
+                <p className="text-sm text-gray-600">{unreadCount} sin leer</p>
+              </div>
+              <button 
+                onClick={() => setShowNotifications(false)}
+                className="w-8 h-8 hover:bg-gray-100 rounded-lg flex items-center justify-center transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-600" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto flex-1">
+              {notifications.length === 0 ? (
+                <div className="p-12 text-center text-gray-500">
+                  <Bell className="w-16 h-16 mx-auto mb-3 text-gray-300" />
+                  <p className="font-medium">No hay notificaciones</p>
+                  <p className="text-sm text-gray-400 mt-1">Todo está al día</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-100">
+                  {notifications.map(notif => (
+                    <div
+                      key={notif.id}
+                      onClick={() => markAsRead(notif.id)}
+                      className={`p-4 hover:bg-gray-50 cursor-pointer transition-colors ${
+                        !notif.read ? 'bg-purple-50/50' : ''
+                      }`}
+                    >
+                      <div className="flex gap-3">
+                        <div className="flex-shrink-0 mt-1 w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
+                          {getNotificationIcon(notif.type)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="font-bold text-sm text-gray-900">
+                              {notif.title}
+                            </p>
+                            {!notif.read && (
+                              <span className="w-2 h-2 bg-purple-600 rounded-full flex-shrink-0 mt-1.5" />
+                            )}
+                          </div>
+                          <p className="text-sm text-gray-600 mt-1 leading-relaxed">
+                            {notif.message}
+                          </p>
+                          <p className="text-xs text-gray-400 mt-2">
+                            {format(notif.time, "HH:mm", { locale: es })}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {notifications.length > 0 && (
+              <div className="p-3 border-t border-gray-100 bg-gray-50">
+                <button
+                  onClick={markAllAsRead}
+                  className="text-sm text-purple-600 hover:text-purple-700 font-semibold w-full text-center py-2 hover:bg-purple-50 rounded-lg transition-colors"
+                >
+                  Marcar todas como leídas
+                </button>
+              </div>
+            )}
+          </div>
+        </>
+      )}
 
       {/* Logout Button Premium */}
       <div className="relative border-t border-white/10 p-4">

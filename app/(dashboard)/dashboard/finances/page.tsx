@@ -53,8 +53,8 @@ export default function FinancesPage() {
   }, [selectedMonth])
 
   const loadFinances = async () => {
-    const monthStart = startOfMonth(selectedMonth).toISOString().split('T')[0]
-    const monthEnd = endOfMonth(selectedMonth).toISOString().split('T')[0]
+    const monthStart = format(startOfMonth(selectedMonth), 'yyyy-MM-dd')
+    const monthEnd = format(endOfMonth(selectedMonth), 'yyyy-MM-dd')
 
     const { data: paymentsData } = await supabase
       .from('payments')
@@ -277,7 +277,10 @@ export default function FinancesPage() {
           <Input
             type="month"
             value={format(selectedMonth, 'yyyy-MM')}
-            onChange={(e) => setSelectedMonth(new Date(e.target.value + '-01'))}
+            onChange={(e) => {
+              const [year, month] = e.target.value.split('-').map(Number)
+              setSelectedMonth(new Date(year, month - 1, 1))
+            }}
             className="w-40"
           />
         </div>

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
+import { useRouter } from 'next/navigation'
 import { 
   Calendar, 
   DollarSign, 
@@ -13,7 +14,10 @@ import {
   Sparkles,
   Search,
   Bell,
-  Plus
+  Plus,
+  X,
+  User,
+  Scissors
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -29,7 +33,17 @@ interface DashboardStats {
   weekRevenue: { date: string; amount: number }[]
 }
 
+interface Notification {
+  id: string
+  type: 'appointment' | 'payment' | 'stock' | 'client'
+  title: string
+  message: string
+  time: Date
+  read: boolean
+}
+
 export default function DashboardPage() {
+  const router = useRouter()
   const [stats, setStats] = useState<DashboardStats>({
     todayAppointments: 0,
     monthRevenue: 0,
@@ -42,18 +56,234 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [userRole, setUserRole] = useState<string>('')
   const [userName, setUserName] = useState<string>('')
+  const [searchTerm, setSearchTerm] = useState('')
+  const [searchResults, setSearchResults] = useState<any[]>([])
+  const [showSearchResults, setShowSearchResults] = useState(false)
+  const [searching, setSearching] = useState(false)
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [showNotifications, setShowNotifications] = useState(false)
 
   const supabase = createClient()
 
   useEffect(() => {
     loadDashboardData()
+    loadNotifications()
+    // Actualizar notificaciones cada minuto
+    const interval = setInterval(loadNotifications, 60000)
+    return () => clearInterval(interval)
   }, [])
+
+  useEffect(() => {
+    if (searchTerm.length > 2) {
+      performSearch()
+    } else {
+      setSearchResults([])
+      setShowSearchResults(false)
+    }
+  }, [searchTerm])
+
+  const performSearch = async () => {
+    setSearching(true)
+    const results: any[] = []
+
+    try {
+      // Buscar en clientes
+      const { data: clients } = await supabase
+        .from('clients')
+        .select('id, full_name, email, phone')
+        .or(`full_name.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%`)
+        .limit(5)
+
+      if (clients) {
+        clients.forEach(client => {
+          results.push({
+            type: 'client',
+            id: client.id,
+            title: client.full_name,
+            subtitle: client.email || client.phone,
+            icon: 'user',
+            action: () => router.push(`/dashboard/clients?search=${encodeURIComponent(client.full_name)}`)
+          })
+        })
+      }
+
+      // Buscar en servicios
+      const { data: services } = await supabase
+        .from('services')
+        .select('id, name, category, price')
+        .ilike('name', `%${searchTerm}%`)
+        .eq('is_active', true)
+        .limit(5)
+
+      if (services) {
+        services.forEach(service => {
+          results.push({
+            type: 'service',
+            id: service.id,
+            title: service.name,
+            subtitle: `${service.category} - $${service.price.toLocaleString()}`,
+            icon: 'scissors',
+            action: () => router.push('/dashboard/services')
+          })
+        })
+      }
+
+      // Buscar en citas (por nombre de cliente)
+      const { data: appointments } = await supabase
+        .from('appointments')
+        .select(`
+          id,
+          appointment_date,
+          appointment_time,
+          status,
+          clients!inner(full_name),
+          services(name)
+        `)
+        .ilike('clients.full_name', `%${searchTerm}%`)
+        .order('appointment_date', { ascending: false })
+        .limit(5)
+
+      if (appointments) {
+        appointments.forEach((apt: any) => {
+          results.push({
+            type: 'appointment',
+            id: apt.id,
+            title: `Cita: ${apt.clients?.full_name}`,
+            subtitle: `${apt.services?.name} - ${format(new Date(apt.appointment_date), 'd MMM', { locale: es })} ${apt.appointment_time}`,
+            icon: 'calendar',
+            action: () => router.push('/dashboard/appointments')
+          })
+        })
+      }
+
+      setSearchResults(results)
+      setShowSearchResults(results.length > 0)
+    } catch (error) {
+      console.error('Error en búsqueda:', error)
+    }
+
+    setSearching(false)
+  }
+
+  const getSearchIcon = (type: string) => {
+    switch (type) {
+      case 'client': return <User className="w-5 h-5 text-purple-600" />
+      case 'service': return <Scissors className="w-5 h-5 text-fuchsia-600" />
+      case 'appointment': return <Calendar className="w-5 h-5 text-cyan-600" />
+      default: return <Search className="w-5 h-5 text-gray-600" />
+    }
+  }
+
+  const loadNotifications = async () => {
+    const notifs: Notification[] = []
+    const today = new Date().toISOString().split('T')[0]
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+
+      // Notificación 1: Citas pendientes de hoy
+      let appointmentsQuery = supabase
+        .from('appointments')
+        .select('*, clients(full_name)')
+        .eq('appointment_date', today)
+        .eq('status', 'pending')
+
+      if (profile?.role === 'estilista') {
+        appointmentsQuery = appointmentsQuery.eq('employee_id', user.id)
+      }
+
+      const { data: pendingAppts } = await appointmentsQuery
+
+      if (pendingAppts && pendingAppts.length > 0) {
+        notifs.push({
+          id: 'pending-appts',
+          type: 'appointment',
+          title: 'Citas pendientes',
+          message: `Tienes ${pendingAppts.length} cita(s) pendiente(s) por confirmar hoy`,
+          time: new Date(),
+          read: false
+        })
+      }
+
+      // Notificación 2: Stock bajo (solo admin y cajero)
+      if (profile?.role !== 'estilista') {
+        const { data: inventory } = await supabase
+          .from('inventory')
+          .select('product_name, current_quantity, min_quantity')
+
+        const lowStock = inventory?.filter(item => 
+          item.current_quantity <= item.min_quantity
+        ) || []
+
+        if (lowStock.length > 0) {
+          notifs.push({
+            id: 'low-stock',
+            type: 'stock',
+            title: 'Stock bajo',
+            message: `${lowStock.length} producto(s) con stock bajo`,
+            time: new Date(),
+            read: false
+          })
+        }
+
+        // Notificación 3: Facturas pendientes
+        const { data: pendingInvoices } = await supabase
+          .from('invoices')
+          .select('invoice_number')
+          .eq('status', 'pending')
+
+        if (pendingInvoices && pendingInvoices.length > 0) {
+          notifs.push({
+            id: 'pending-invoices',
+            type: 'payment',
+            title: 'Facturas pendientes',
+            message: `${pendingInvoices.length} factura(s) pendiente(s) de pago`,
+            time: new Date(),
+            read: false
+          })
+        }
+      }
+
+      setNotifications(notifs)
+    } catch (error) {
+      console.error('Error cargando notificaciones:', error)
+    }
+  }
+
+  const markAsRead = (id: string) => {
+    setNotifications(prev => prev.map(n => 
+      n.id === id ? { ...n, read: true } : n
+    ))
+  }
+
+  const markAllAsRead = () => {
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })))
+  }
+
+  const getNotificationIcon = (type: string) => {
+    switch (type) {
+      case 'appointment': return <Calendar className="w-5 h-5 text-purple-600" />
+      case 'stock': return <AlertTriangle className="w-5 h-5 text-red-600" />
+      case 'payment': return <DollarSign className="w-5 h-5 text-green-600" />
+      default: return <Bell className="w-5 h-5 text-gray-600" />
+    }
+  }
 
   const loadDashboardData = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser()
       
-      if (!user) return
+      if (!user) {
+        router.push('/login')
+        return
+      }
 
       // Obtener rol del usuario
       const { data: profile } = await supabase
@@ -104,7 +334,7 @@ export default function DashboardPage() {
         .order('created_at', { ascending: false })
         .limit(5)
 
-      // Ingresos del mes (solo admin y cajero)
+      // Ingresos del mes
       let monthRevenue = 0
       if (profile?.role !== 'estilista') {
         const { data: payments } = await supabase
@@ -115,7 +345,7 @@ export default function DashboardPage() {
         monthRevenue = payments?.reduce((sum, p) => sum + Number(p.amount), 0) || 0
       }
 
-      // Total de clientes (solo admin y cajero)
+      // Total de clientes
       let totalClients = 0
       if (profile?.role !== 'estilista') {
         const { count } = await supabase
@@ -125,7 +355,7 @@ export default function DashboardPage() {
         totalClients = count || 0
       }
 
-      // Productos con stock bajo (solo admin y cajero)
+      // Productos con stock bajo
       let lowStockItems = 0
       if (profile?.role !== 'estilista') {
         const { data: inventory } = await supabase
@@ -135,7 +365,7 @@ export default function DashboardPage() {
         lowStockItems = inventory?.filter(item => item.current_quantity <= item.min_quantity).length || 0
       }
 
-      // Ingresos de la semana (solo admin y cajero)
+      // Ingresos de la semana
       let weekRevenue: { date: string; amount: number }[] = []
       if (profile?.role !== 'estilista') {
         const last7Days = Array.from({ length: 7 }, (_, i) => {
@@ -174,6 +404,10 @@ export default function DashboardPage() {
     }
   }
 
+  const handleNewAppointment = () => {
+    router.push('/dashboard/appointments?new=true')
+  }
+
   const getGreeting = () => {
     const hour = new Date().getHours()
     if (hour < 12) return 'Buenos días'
@@ -206,25 +440,168 @@ export default function DashboardPage() {
       {/* Topbar Premium */}
       <div className="sticky top-0 z-40 backdrop-blur-xl bg-white/80 border-b border-gray-200/50 shadow-sm">
         <div className="px-8 py-4">
-          <div className="flex items-center justify-between">
-            {/* Search Bar */}
-            <div className="flex-1 max-w-xl">
+          <div className="flex items-center justify-between gap-6">
+            {/* Search Bar Mejorado */}
+            <div className="flex-1 max-w-xl relative">
               <div className="relative">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" strokeWidth={2} />
                 <input
                   type="text"
                   placeholder="Buscar clientes, citas, servicios..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onFocus={() => searchResults.length > 0 && setShowSearchResults(true)}
                   className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:border-purple-300 focus:ring-4 focus:ring-purple-100 outline-none transition-all text-sm"
                 />
+                {searching && (
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                    <div className="w-4 h-4 border-2 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
+                  </div>
+                )}
               </div>
+
+              {/* Panel de resultados de búsqueda */}
+              {showSearchResults && searchResults.length > 0 && (
+                <>
+                  <div 
+                    className="fixed inset-0 z-40" 
+                    onClick={() => setShowSearchResults(false)}
+                  />
+                  <div className="absolute top-full mt-2 w-full bg-white rounded-xl shadow-2xl border border-gray-200 z-50 max-h-96 overflow-hidden">
+                    <div className="p-3 border-b border-gray-100 bg-gradient-to-r from-purple-50 to-fuchsia-50">
+                      <p className="text-sm font-semibold text-gray-700">
+                        {searchResults.length} resultado{searchResults.length !== 1 ? 's' : ''} encontrado{searchResults.length !== 1 ? 's' : ''}
+                      </p>
+                    </div>
+                    <div className="max-h-80 overflow-y-auto">
+                      {searchResults.map((result, index) => (
+                        <button
+                          key={`${result.type}-${result.id}-${index}`}
+                          onClick={() => {
+                            result.action()
+                            setShowSearchResults(false)
+                            setSearchTerm('')
+                          }}
+                          className="w-full p-4 hover:bg-gray-50 transition-colors flex items-start gap-3 border-b border-gray-100 last:border-0"
+                        >
+                          <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center shrink-0">
+                            {getSearchIcon(result.type)}
+                          </div>
+                          <div className="flex-1 text-left min-w-0">
+                            <p className="font-semibold text-sm text-gray-900 truncate">
+                              {result.title}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-1 truncate">
+                              {result.subtitle}
+                            </p>
+                          </div>
+                          <div className={`px-2 py-1 rounded-md text-xs font-medium shrink-0 ${
+                            result.type === 'client' ? 'bg-purple-100 text-purple-700' :
+                            result.type === 'service' ? 'bg-fuchsia-100 text-fuchsia-700' :
+                            'bg-cyan-100 text-cyan-700'
+                          }`}>
+                            {result.type === 'client' ? 'Cliente' : 
+                             result.type === 'service' ? 'Servicio' : 'Cita'}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Right Actions */}
             <div className="flex items-center gap-3">
-              <button className="relative w-10 h-10 bg-gray-100 hover:bg-gray-200 rounded-xl flex items-center justify-center transition-all group">
-                <Bell className="w-5 h-5 text-gray-600 group-hover:text-purple-600" strokeWidth={2} />
-                <span className="absolute top-1 right-1 w-2 h-2 bg-fuchsia-500 rounded-full border-2 border-white"></span>
-              </button>
+              {/* Notificaciones Funcionales */}
+              <div className="relative">
+                <button 
+                  onClick={() => setShowNotifications(!showNotifications)}
+                  className="relative w-10 h-10 bg-gray-100 hover:bg-gray-200 rounded-xl flex items-center justify-center transition-all group"
+                >
+                  <Bell className="w-5 h-5 text-gray-600 group-hover:text-purple-600" strokeWidth={2} />
+                  {notifications.filter(n => !n.read).length > 0 && (
+                    <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-fuchsia-500 rounded-full border-2 border-white text-white text-[10px] font-bold flex items-center justify-center px-1">
+                      {notifications.filter(n => !n.read).length > 9 ? '9+' : notifications.filter(n => !n.read).length}
+                    </span>
+                  )}
+                </button>
+
+                {/* Panel de Notificaciones */}
+                {showNotifications && (
+                  <>
+                    <div 
+                      className="fixed inset-0 z-40" 
+                      onClick={() => setShowNotifications(false)}
+                    />
+                    <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-2xl border border-gray-200 z-50 max-h-[500px] overflow-hidden flex flex-col">
+                      <div className="p-4 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-purple-50 to-fuchsia-50">
+                        <div>
+                          <h3 className="font-bold text-gray-900">Notificaciones</h3>
+                          <p className="text-xs text-gray-600 mt-0.5">
+                            {notifications.filter(n => !n.read).length} sin leer
+                          </p>
+                        </div>
+                        <button 
+                          onClick={() => setShowNotifications(false)}
+                          className="w-6 h-6 hover:bg-gray-100 rounded-lg flex items-center justify-center"
+                        >
+                          <X className="w-4 h-4 text-gray-600" />
+                        </button>
+                      </div>
+                      <div className="max-h-96 overflow-y-auto">
+                        {notifications.length === 0 ? (
+                          <div className="p-12 text-center text-gray-500">
+                            <Bell className="w-16 h-16 mx-auto mb-3 text-gray-300" />
+                            <p className="font-medium">No hay notificaciones</p>
+                            <p className="text-sm text-gray-400 mt-1">Todo está al día</p>
+                          </div>
+                        ) : (
+                          notifications.map((notif) => (
+                            <div 
+                              key={notif.id} 
+                              onClick={() => markAsRead(notif.id)}
+                              className={`p-4 hover:bg-gray-50 border-b border-gray-100 cursor-pointer transition-colors ${
+                                !notif.read ? 'bg-purple-50/50' : ''
+                              }`}
+                            >
+                              <div className="flex items-start gap-3">
+                                <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center shrink-0">
+                                  {getNotificationIcon(notif.type)}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center justify-between gap-2 mb-1">
+                                    <p className="font-bold text-sm text-gray-900">
+                                      {notif.title}
+                                    </p>
+                                    {!notif.read && (
+                                      <div className="w-2 h-2 bg-purple-600 rounded-full shrink-0"></div>
+                                    )}
+                                  </div>
+                                  <p className="text-xs text-gray-600 leading-relaxed">{notif.message}</p>
+                                  <p className="text-xs text-gray-400 mt-2">
+                                    {format(notif.time, 'HH:mm', { locale: es })}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                      {notifications.length > 0 && (
+                        <div className="p-3 border-t border-gray-100 bg-gray-50">
+                          <button
+                            onClick={markAllAsRead}
+                            className="text-sm text-purple-600 hover:text-purple-700 font-semibold w-full text-center py-2 hover:bg-purple-50 rounded-lg transition-colors"
+                          >
+                            Marcar todas como leídas
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
 
               <div className="w-px h-8 bg-gray-200"></div>
 
@@ -240,7 +617,11 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              <button className="ml-2 px-5 py-2.5 bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white font-semibold rounded-xl hover:shadow-lg hover:shadow-purple-500/50 transition-all flex items-center gap-2 text-sm">
+              {/* Botón Nueva Cita Funcional */}
+              <button 
+                onClick={handleNewAppointment}
+                className="ml-2 px-5 py-2.5 bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white font-semibold rounded-xl hover:shadow-lg hover:shadow-purple-500/50 transition-all flex items-center gap-2 text-sm"
+              >
                 <Plus className="w-4 h-4" strokeWidth={2.5} />
                 Nueva Cita
               </button>
@@ -430,7 +811,10 @@ export default function DashboardPage() {
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-lg font-bold text-gray-900">Actividad Reciente</h3>
-            <button className="text-sm text-purple-600 hover:text-purple-700 font-semibold">
+            <button 
+              onClick={() => router.push('/dashboard/appointments')}
+              className="text-sm text-purple-600 hover:text-purple-700 font-semibold"
+            >
               Ver todas
             </button>
           </div>
@@ -439,7 +823,9 @@ export default function DashboardPage() {
           ) : (
             <div className="space-y-4">
               {stats.recentAppointments.map((appt) => (
-                <div key={appt.id} className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl hover:bg-purple-50 transition-colors">
+                <div key={appt.id} className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl hover:bg-purple-50 transition-colors cursor-pointer"
+                  onClick={() => router.push('/dashboard/appointments')}
+                >
                   <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-fuchsia-500 rounded-lg flex items-center justify-center shadow-md">
                     <span className="text-white font-bold text-sm">
                       {appt.clients?.full_name?.charAt(0) || 'C'}

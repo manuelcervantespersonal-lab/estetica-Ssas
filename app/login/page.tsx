@@ -181,20 +181,23 @@ export default function LoginPage() {
           <div className="relative mt-6 lg:mt-8 hidden md:block">
             <div className="relative w-full h-48 sm:h-56 md:h-64 lg:h-80 xl:h-96 overflow-hidden rounded-2xl lg:rounded-3xl">
               {/* Gradiente de integración para que se mezcle con el fondo */}
-              <div className="absolute inset-0 bg-gradient-to-t from-[#1a0a2e] via-[#1a0a2e]/50 to-transparent z-10"></div>
-              <div className="absolute inset-0 bg-gradient-to-r from-[#2d1548]/40 to-transparent z-10"></div>
+              <div className="absolute inset-0 bg-gradient-to-t from-[#1a0a2e]/40 via-transparent to-transparent z-10"></div>
+<div className="absolute inset-0 bg-gradient-to-r from-[#2d1548]/20 via-transparent to-transparent z-10"></div>
               
-              {/* Imagen con la URL exacta */}
-              <img 
-                src="https://chatgpt.com/backend-api/estuary/content?id=file_00000000fe50720e938ede030c76ca3e&ts=494371&p=fs&cid=1&sig=7909fc33c83252e7a1ba02763ca63d3bce31ebc8a2bf842b91cfb9c68cd4f7fc&v=0"
+              {/* Imagen optimizada */}
+                <img 
+                src="https://fruttco.site/wp-content/uploads/2026/05/1d432f4c-49e6-4628-8b4b-9492e4bca080.png"
                 alt="Tratamiento estético"
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  // Fallback a imagen de Unsplash si falla
-                  const target = e.target as HTMLImageElement;
-                  target.src = "https://chatgpt.com/backend-api/estuary/content?id=file_00000000fe50720e938ede030c76ca3e&ts=494371&p=fs&cid=1&sig=7909fc33c83252e7a1ba02763ca63d3bce31ebc8a2bf842b91cfb9c68cd4f7fc&v=0";
+                className="w-full h-full object-cover object-center"
+                style={{
+                    objectPosition: "center center"
                 }}
-              />
+                onError={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    target.src =
+                    "https://fruttco.site/wp-content/uploads/2026/05/1d432f4c-49e6-4628-8b4b-9492e4bca080.png";
+                }}
+                />
               
               {/* Efecto de velas/luz decorativa */}
               <div className="absolute bottom-4 left-4 lg:bottom-8 lg:left-8 flex gap-2 lg:gap-3 z-20">
