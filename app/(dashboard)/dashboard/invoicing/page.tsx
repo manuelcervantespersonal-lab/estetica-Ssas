@@ -38,6 +38,7 @@ interface Invoice {
   discount: number
   tax_amount: number
   total: number
+  notes?: string  // ← agregar esta línea
   clients: { full_name: string; phone: string; email: string }
   profiles: { full_name: string }
 }
