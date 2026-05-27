@@ -26,11 +26,13 @@ import { AreaChart, Area, PieChart, Pie, Cell, ResponsiveContainer, XAxis, YAxis
 interface DashboardStats {
   todayAppointments: number
   monthRevenue: number
+  lastMonthRevenue: number
   totalClients: number
   lowStockItems: number
   nextAppointment: any
   recentAppointments: any[]
   weekRevenue: { date: string; amount: number }[]
+  servicesData: { name: string; value: number; color: string }[]
 }
 
 interface Notification {
@@ -47,11 +49,13 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats>({
     todayAppointments: 0,
     monthRevenue: 0,
+    lastMonthRevenue: 0,
     totalClients: 0,
     lowStockItems: 0,
     nextAppointment: null,
     recentAppointments: [],
-    weekRevenue: []
+    weekRevenue: [],
+    servicesData: []
   })
   const [loading, setLoading] = useState(true)
   const [userRole, setUserRole] = useState<string>('')
@@ -334,15 +338,23 @@ export default function DashboardPage() {
         .order('created_at', { ascending: false })
         .limit(5)
 
-      // Ingresos del mes
+      // Ingresos del mes actual
       let monthRevenue = 0
+      let lastMonthRevenue = 0
       if (profile?.role !== 'estilista') {
-        const { data: payments } = await supabase
-          .from('payments')
-          .select('amount')
-          .gte('payment_date', firstDayOfMonth)
+        const firstDayLastMonth = new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1).toISOString().split('T')[0]
+        const lastDayLastMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 0).toISOString().split('T')[0]
 
+        const { data: payments } = await supabase
+          .from('payments').select('amount')
+          .gte('payment_date', firstDayOfMonth)
         monthRevenue = payments?.reduce((sum, p) => sum + Number(p.amount), 0) || 0
+
+        const { data: lastMonthPayments } = await supabase
+          .from('payments').select('amount')
+          .gte('payment_date', firstDayLastMonth)
+          .lte('payment_date', lastDayLastMonth)
+        lastMonthRevenue = lastMonthPayments?.reduce((sum, p) => sum + Number(p.amount), 0) || 0
       }
 
       // Total de clientes
@@ -387,14 +399,44 @@ export default function DashboardPage() {
         weekRevenue = await Promise.all(revenuePromises)
       }
 
+      // Servicios más usados este mes (datos reales)
+      const colors = ['#a855f7', '#ec4899', '#8b5cf6', '#d946ef', '#c084fc']
+      let servicesData: { name: string; value: number; color: string }[] = []
+      if (profile?.role !== 'estilista') {
+        const { data: aptsThisMonth } = await supabase
+          .from('appointments')
+          .select('services(name)')
+          .gte('appointment_date', firstDayOfMonth)
+          .eq('status', 'completed')
+
+        if (aptsThisMonth && aptsThisMonth.length > 0) {
+          const counts: Record<string, number> = {}
+          aptsThisMonth.forEach((a: any) => {
+            const name = a.services?.name
+            if (name) counts[name] = (counts[name] || 0) + 1
+          })
+          const total = Object.values(counts).reduce((s, v) => s + v, 0)
+          servicesData = Object.entries(counts)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 5)
+            .map(([name, count], i) => ({
+              name,
+              value: Math.round((count / total) * 100),
+              color: colors[i] || '#c084fc'
+            }))
+        }
+      }
+
       setStats({
         todayAppointments: todayAppts?.length || 0,
         monthRevenue,
+        lastMonthRevenue,
         totalClients,
         lowStockItems,
         nextAppointment: nextAppt,
         recentAppointments: recentAppts || [],
-        weekRevenue
+        weekRevenue,
+        servicesData
       })
 
       setLoading(false)
@@ -414,15 +456,6 @@ export default function DashboardPage() {
     if (hour < 19) return 'Buenas tardes'
     return 'Buenas noches'
   }
-
-  // Datos para gráfico de servicios (ejemplo)
-  const servicesData = [
-    { name: 'Manicure', value: 35, color: '#a855f7' },
-    { name: 'Pedicure', value: 25, color: '#ec4899' },
-    { name: 'Facial', value: 20, color: '#8b5cf6' },
-    { name: 'Masajes', value: 15, color: '#d946ef' },
-    { name: 'Otros', value: 5, color: '#c084fc' },
-  ]
 
   if (loading) {
     return (
@@ -678,9 +711,23 @@ export default function DashboardPage() {
                   <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-500 rounded-xl flex items-center justify-center shadow-lg shadow-green-500/30">
                     <DollarSign className="w-6 h-6 text-white" strokeWidth={2.5} />
                   </div>
-                  <div className="flex items-center gap-1 text-green-600 text-sm font-semibold">
-                    <ArrowUpRight className="w-4 h-4" />
-                    <span>+12%</span>
+                  <div className={`flex items-center gap-1 text-sm font-semibold ${
+                    stats.monthRevenue >= stats.lastMonthRevenue ? 'text-green-600' : 'text-red-500'
+                  }`}>
+                    {stats.lastMonthRevenue > 0 ? (
+                      <>
+                        {stats.monthRevenue >= stats.lastMonthRevenue
+                          ? <ArrowUpRight className="w-4 h-4" />
+                          : <ArrowDownRight className="w-4 h-4" />
+                        }
+                        {stats.lastMonthRevenue > 0
+                          ? `${stats.monthRevenue >= stats.lastMonthRevenue ? '+' : ''}${Math.round(((stats.monthRevenue - stats.lastMonthRevenue) / stats.lastMonthRevenue) * 100)}%`
+                          : 'Nuevo'
+                        }
+                      </>
+                    ) : (
+                      <span className="text-gray-400 text-xs">vs mes ant.</span>
+                    )}
                   </div>
                 </div>
                 <p className="text-gray-600 text-sm font-medium mb-1">Ingresos del Mes</p>
@@ -774,35 +821,39 @@ export default function DashboardPage() {
 
             {/* Services Pie Chart */}
             <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-              <h3 className="text-lg font-bold text-gray-900 mb-6">Servicios Populares</h3>
-              <ResponsiveContainer width="100%" height={200}>
-                <PieChart>
-                  <Pie
-                    data={servicesData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={80}
-                    paddingAngle={5}
-                    dataKey="value"
-                  >
-                    {servicesData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
+              <h3 className="text-lg font-bold text-gray-900 mb-2">Servicios Populares</h3>
+              <p className="text-xs text-gray-400 mb-4">Citas completadas este mes</p>
+              {stats.servicesData.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-8 text-gray-400">
+                  <Scissors className="w-12 h-12 mb-3 text-gray-200" strokeWidth={1.5} />
+                  <p className="text-sm">Sin citas completadas este mes</p>
+                </div>
+              ) : (
+                <>
+                  <ResponsiveContainer width="100%" height={200}>
+                    <PieChart>
+                      <Pie data={stats.servicesData} cx="50%" cy="50%"
+                        innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
+                        {stats.servicesData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(value) => [`${value}%`, 'Participación']} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="mt-4 space-y-2">
+                    {stats.servicesData.map((service, index) => (
+                      <div key={index} className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: service.color }}></div>
+                          <span className="text-sm text-gray-700 truncate max-w-[120px]">{service.name}</span>
+                        </div>
+                        <span className="text-sm font-semibold text-gray-900">{service.value}%</span>
+                      </div>
                     ))}
-                  </Pie>
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="mt-6 space-y-3">
-                {servicesData.map((service, index) => (
-                  <div key={index} className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: service.color }}></div>
-                      <span className="text-sm text-gray-700">{service.name}</span>
-                    </div>
-                    <span className="text-sm font-semibold text-gray-900">{service.value}%</span>
                   </div>
-                ))}
-              </div>
+                </>
+              )}
             </div>
           </div>
         )}

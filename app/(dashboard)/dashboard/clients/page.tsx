@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase'
-import { Plus, Search, Pencil, Trash2, Users, TrendingUp, DollarSign, Calendar, X, CreditCard } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { Plus, Search, Pencil, Trash2, Users, TrendingUp, DollarSign, Calendar, X, CreditCard, Eye } from 'lucide-react'
 
 interface Client {
   id: string
@@ -21,6 +22,7 @@ const emptyForm = {
 }
 
 export default function ClientsPage() {
+  const router = useRouter()
   const [clients, setClients] = useState<Client[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [showModal, setShowModal] = useState(false)
@@ -227,6 +229,11 @@ export default function ClientsPage() {
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2">
+                      <button onClick={() => router.push(`/dashboard/clients/${client.id}`)}
+                        className="w-9 h-9 bg-blue-100 hover:bg-blue-200 rounded-lg flex items-center justify-center transition-colors"
+                        title="Ver perfil">
+                        <Eye className="w-4 h-4 text-blue-600" strokeWidth={2} />
+                      </button>
                       <button onClick={() => handleEdit(client)}
                         className="w-9 h-9 bg-purple-100 hover:bg-purple-200 rounded-lg flex items-center justify-center transition-colors">
                         <Pencil className="w-4 h-4 text-purple-600" strokeWidth={2} />

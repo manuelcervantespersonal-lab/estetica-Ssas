@@ -11,7 +11,7 @@ import { format, addMonths, subMonths, startOfMonth, endOfMonth,
   eachDayOfInterval, isSameDay, isToday, isBefore, startOfDay, addMinutes } from 'date-fns'
 import { es } from 'date-fns/locale'
 
-interface Client { id: string; full_name: string; phone: string }
+interface Client { id: string; full_name: string; phone: string; email: string }
 interface Service { id: string; name: string; duration_minutes: number; price: number; category: string }
 interface Stylist { id: string; full_name: string }
 interface TimeSlot { time: string; available: boolean; stylistsAvailable: Stylist[]; stylistsBooked: number }
@@ -73,9 +73,12 @@ export default function NewAppointmentPage() {
   }
 
   const loadClients = async () => {
-    const { data } = await supabase.from('clients').select('id, full_name, phone').order('full_name')
-    if (data) setClients(data)
-  }
+  const { data } = await supabase
+    .from('clients')
+    .select('id, full_name, phone, email')
+    .order('full_name')
+  if (data) setClients(data)
+}
 
   const loadServices = async () => {
     const { data } = await supabase
@@ -152,28 +155,112 @@ export default function NewAppointmentPage() {
   }
 
   const handleSave = async () => {
-    if (!selectedClient || !selectedService || !selectedDate || !selectedSlot) return
-    setSaving(true)
+  if (!selectedClient || !selectedService || !selectedDate || !selectedSlot) return
+  setSaving(true)
 
-    const { error } = await supabase.from('appointments').insert({
-      client_id: selectedClient.id,
-      service_id: selectedService.id,
-      employee_id: selectedStylist?.id || userId,
-      appointment_date: format(selectedDate, 'yyyy-MM-dd'),
-      appointment_time: selectedSlot.time,
-      status: 'pending',
-      notes,
-      assigned_by: userId
-    })
+  const employeeId = selectedStylist?.id || userId
 
-    if (error) {
-      alert('Error: ' + error.message)
-    } else {
-      alert(`✅ Cita agendada para ${selectedClient.full_name} el ${format(selectedDate, "d 'de' MMMM", { locale: es })} a las ${selectedSlot.time}`)
-      router.push('/dashboard/appointments/calendar')
-    }
+  const { error } = await supabase.from('appointments').insert({
+    client_id: selectedClient.id,
+    service_id: selectedService.id,
+    employee_id: employeeId,
+    appointment_date: format(selectedDate, 'yyyy-MM-dd'),
+    appointment_time: selectedSlot.time,
+    status: 'pending',
+    notes,
+    assigned_by: userId
+  })
+
+  if (error) {
+    alert('Error: ' + error.message)
     setSaving(false)
+    return
   }
+
+  // Enviar email de confirmación al cliente
+  if (selectedClient.email) {
+    const emailHtml = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; color: #333; margin: 0; padding: 0; }
+          .container { max-width: 600px; margin: 0 auto; }
+          .header { background: linear-gradient(135deg, #9333ea, #db2777); padding: 30px; text-align: center; border-radius: 12px 12px 0 0; }
+          .header h1 { color: white; margin: 0; font-size: 24px; }
+          .header p { color: rgba(255,255,255,0.85); margin: 8px 0 0; }
+          .body { background: #f9fafb; padding: 30px; }
+          .card { background: white; border-radius: 12px; padding: 24px; margin-bottom: 16px; }
+          .row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f3f4f6; }
+          .row:last-child { border-bottom: none; }
+          .label { color: #6b7280; font-size: 14px; }
+          .value { font-weight: bold; color: #111827; font-size: 14px; }
+          .footer { text-align: center; padding: 20px; color: #9ca3af; font-size: 13px; }
+          .badge { background: #f3e8ff; color: #9333ea; padding: 4px 12px; border-radius: 20px; font-size: 13px; font-weight: bold; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>✨ Cita Confirmada</h1>
+            <p>Tu cita ha sido agendada exitosamente</p>
+          </div>
+          <div class="body">
+            <div class="card">
+              <p style="margin:0 0 16px; font-size:16px;">Hola <strong>${selectedClient.full_name}</strong>, te confirmamos tu cita:</p>
+              <div class="row">
+                <span class="label">📅 Fecha</span>
+                <span class="value">${format(selectedDate, "EEEE, d 'de' MMMM 'de' yyyy", { locale: es })}</span>
+              </div>
+              <div class="row">
+                <span class="label">🕐 Hora</span>
+                <span class="value">${selectedSlot.time}</span>
+              </div>
+              <div class="row">
+                <span class="label">💅 Servicio</span>
+                <span class="value">${selectedService.name}</span>
+              </div>
+              <div class="row">
+                <span class="label">⏱ Duración</span>
+                <span class="value">${selectedService.duration_minutes} minutos</span>
+              </div>
+              <div class="row">
+                <span class="label">💰 Precio</span>
+                <span class="value">$${selectedService.price.toLocaleString()}</span>
+              </div>
+            </div>
+            <div style="background:#faf5ff; border-radius:12px; padding:16px; text-align:center;">
+              <p style="margin:0; color:#6b7280; font-size:14px;">Si necesitas cancelar o reagendar, contáctanos con anticipación.</p>
+            </div>
+          </div>
+          <div class="footer">
+            <p>Gracias por tu preferencia 💜</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `
+
+    try {
+      await fetch('/api/send-invoice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: selectedClient.email,
+          subject: `✅ Cita confirmada - ${format(selectedDate, "d 'de' MMMM", { locale: es })} a las ${selectedSlot.time}`,
+          html: emailHtml
+        })
+      })
+    } catch (e) {
+      console.error('Error enviando email de confirmación:', e)
+      // No bloquear el flujo si falla el email
+    }
+  }
+
+  alert(`✅ Cita agendada para ${selectedClient.full_name} el ${format(selectedDate, "d 'de' MMMM", { locale: es })} a las ${selectedSlot.time}`)
+  router.push('/dashboard/appointments/calendar')
+  setSaving(false)
+}
 
   // Calendario
   const monthStart = startOfMonth(currentMonth)
