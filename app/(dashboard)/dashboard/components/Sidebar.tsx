@@ -6,7 +6,8 @@ import {
   Home, Users, Scissors, Calendar, Package, DollarSign, 
   Settings, LogOut, Sparkles, TrendingUp, FileText, Bell, 
   X, AlertTriangle, Banknote, ChevronDown, ChevronRight,
-  CalendarPlus, CalendarCheck
+  CalendarPlus, CalendarCheck, BarChart3, Receipt, 
+  ShoppingBag, Building2, UserCog, CalendarClock
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
@@ -50,6 +51,15 @@ export default function Sidebar() {
   useEffect(() => {
     if (pathname.includes('/appointments')) {
       setExpandedMenus(prev => prev.includes('Citas') ? prev : [...prev, 'Citas'])
+    }
+    if (pathname.includes('/finances') || pathname.includes('/reports') || pathname.includes('/payroll')) {
+      setExpandedMenus(prev => prev.includes('Finanzas') ? prev : [...prev, 'Finanzas'])
+    }
+    if (pathname.includes('/services') || pathname.includes('/inventory')) {
+      setExpandedMenus(prev => prev.includes('Catálogo') ? prev : [...prev, 'Catálogo'])
+    }
+    if (pathname.includes('/settings')) {
+      setExpandedMenus(prev => prev.includes('Configuración') ? prev : [...prev, 'Configuración'])
     }
   }, [pathname])
 
@@ -176,6 +186,37 @@ export default function Sidebar() {
     ]
   }
 
+  const finanzasItem: NavItem = {
+    name: 'Finanzas',
+    href: '/dashboard/finances',
+    icon: TrendingUp,
+    children: [
+      { name: 'Reportes', href: '/dashboard/reports', icon: BarChart3 },
+      { name: 'Nómina', href: '/dashboard/settings/payroll', icon: Banknote },
+      { name: 'Gastos', href: '/dashboard/finances', icon: Receipt },
+    ]
+  }
+
+  const catalogoItem: NavItem = {
+    name: 'Servicios y Stock',
+    href: '/dashboard/services',
+    icon: ShoppingBag,
+    children: [
+      { name: 'Servicios', href: '/dashboard/services', icon: Sparkles },
+      { name: 'Inventario', href: '/dashboard/inventory', icon: Package },
+    ]
+  }
+
+  const configuracionItem: NavItem = {
+    name: 'Gestión',
+    href: '/dashboard/settings',
+    icon: Building2,
+    children: [
+      { name: 'Empleados', href: '/dashboard/settings/workers', icon: UserCog },
+      { name: 'Disponibilidad', href: '/dashboard/settings', icon: CalendarClock },
+    ]
+  }
+
   const getNavigation = (): NavItem[] => {
     const baseNav: NavItem[] = [
       { name: 'Dashboard', href: '/dashboard', icon: Home },
@@ -185,15 +226,11 @@ export default function Sidebar() {
       return [
         ...baseNav,
         { name: 'Clientes', href: '/dashboard/clients', icon: Users },
-        { name: 'Servicios', href: '/dashboard/services', icon: Scissors },
+        catalogoItem,
         citasItem,
-        { name: 'Inventario', href: '/dashboard/inventory', icon: Package },
         { name: 'Facturación', href: '/dashboard/invoicing', icon: FileText },
-        { name: 'Finanzas', href: '/dashboard/finances', icon: DollarSign },
-        { name: 'Reportes', href: '/dashboard/reports', icon: TrendingUp },
-        { name: 'Empleados', href: '/dashboard/settings/workers', icon: Users },
-        { name: 'Nómina', href: '/dashboard/settings/payroll', icon: Banknote },
-        { name: 'Configuración', href: '/dashboard/settings', icon: Settings },
+        finanzasItem,
+        configuracionItem,
       ]
     }
 

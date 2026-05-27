@@ -4,8 +4,8 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase'
 import {
   Plus, Search, Edit, UserX, UserCheck,
-  X, Save, Eye, EyeOff, Users,
-  Phone, CreditCard, CheckCircle2, AlertCircle
+  X, Save, Users, Phone, CreditCard,
+  CheckCircle2, AlertCircle, Eye, EyeOff
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -77,6 +77,7 @@ export default function WorkersPage() {
     setEditingWorker(null)
     setForm(emptyForm)
     setError('')
+    setShowPassword(false)
     setShowModal(true)
   }
 
@@ -105,7 +106,7 @@ export default function WorkersPage() {
     }
 
     if (!editingWorker && (!form.email || !form.password)) {
-      setError('Email y contraseña son obligatorios para nuevos trabajadores')
+      setError('Email y contraseña son obligatorios')
       return
     }
 
@@ -118,6 +119,7 @@ export default function WorkersPage() {
 
     try {
       if (editingWorker) {
+        // EDITAR empleado existente
         const { error } = await supabase
           .from('profiles')
           .update({
@@ -135,6 +137,7 @@ export default function WorkersPage() {
         alert(`✅ ${form.nombres} ${form.apellidos} actualizado correctamente`)
 
       } else {
+        // CREAR nuevo empleado con auth
         const { data: authData, error: authError } = await supabase.auth.signUp({
           email: form.email,
           password: form.password,
@@ -146,9 +149,10 @@ export default function WorkersPage() {
           }
         })
 
-        if (authError) { setError('Error al crear acceso: ' + authError.message); setSaving(false); return }
+        if (authError) { setError('Error: ' + authError.message); setSaving(false); return }
         if (!authData.user) { setError('No se pudo crear el usuario'); setSaving(false); return }
 
+        // Guardar datos completos en profiles
         const { error: profileError } = await supabase
           .from('profiles')
           .upsert({
@@ -165,7 +169,7 @@ export default function WorkersPage() {
           })
 
         if (profileError) { setError('Error guardando datos: ' + profileError.message); setSaving(false); return }
-        alert(`✅ ${form.nombres} ${form.apellidos} creado exitosamente`)
+        alert(`✅ ${form.nombres} ${form.apellidos} creado. Ya puede ingresar al sistema con su email y contraseña.`)
       }
 
       await loadWorkers()
@@ -455,7 +459,7 @@ export default function WorkersPage() {
                   </div>
                 </div>
 
-                {/* Acceso al sistema (solo al crear) */}
+                {/* Acceso al sistema - solo al crear */}
                 {!editingWorker && (
                   <div>
                     <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4">Acceso al Sistema</h3>
@@ -470,7 +474,9 @@ export default function WorkersPage() {
                       <div>
                         <label className="block text-sm font-semibold text-gray-700 mb-2">Contraseña *</label>
                         <div className="relative">
-                          <input type={showPassword ? 'text' : 'password'} value={form.password}
+                          <input
+                            type={showPassword ? 'text' : 'password'}
+                            value={form.password}
                             onChange={(e) => setForm({ ...form, password: e.target.value })}
                             placeholder="Mínimo 6 caracteres"
                             className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl focus:bg-white focus:border-purple-300 focus:ring-4 focus:ring-purple-100 outline-none transition-all text-sm pr-12" />
@@ -483,6 +489,7 @@ export default function WorkersPage() {
                     </div>
                   </div>
                 )}
+
               </div>
             </div>
 
