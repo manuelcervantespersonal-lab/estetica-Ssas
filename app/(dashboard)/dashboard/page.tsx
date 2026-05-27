@@ -608,7 +608,7 @@ export default function DashboardPage() {
               <div className="flex items-center gap-3">
                 <div className="text-right">
                   <p className="text-sm font-semibold text-gray-900">{userName}</p>
-                  <p className="text-xs text-gray-500">{userRole === 'admin' ? 'Administrador' : userRole === 'cajero' ? 'Recepción' : 'Estilista'}</p>
+                  <p className="text-xs text-gray-500">{userRole === 'admin' ? 'Administrador' : userRole === 'cajero' ? 'Recepción' : 'Esteticista'}</p>
                 </div>
                 <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-fuchsia-500 rounded-xl flex items-center justify-center shadow-lg">
                   <span className="text-white font-bold text-sm">

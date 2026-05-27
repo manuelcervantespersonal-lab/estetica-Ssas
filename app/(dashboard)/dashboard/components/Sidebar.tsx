@@ -265,7 +265,7 @@ export default function Sidebar() {
   const getRoleName = () => {
     if (userRole === 'admin') return 'Administrador'
     if (userRole === 'cajero') return 'Recepción'
-    if (userRole === 'estilista') return 'Estilista'
+    if (userRole === 'estilista') return 'Esteticista'
     return 'Usuario'
   }
 

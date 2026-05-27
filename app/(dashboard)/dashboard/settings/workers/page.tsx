@@ -23,7 +23,7 @@ interface Worker {
 }
 
 const ROLES = [
-  { value: 'estilista', label: 'Estilista', color: 'bg-purple-100 text-purple-700' },
+  { value: 'estilista', label: 'Esteticista', color: 'bg-purple-100 text-purple-700' },
   { value: 'cajero', label: 'Recepción / Cajero', color: 'bg-blue-100 text-blue-700' },
   { value: 'admin', label: 'Administrador', color: 'bg-red-100 text-red-700' },
 ]
@@ -235,7 +235,7 @@ export default function WorkersPage() {
         {[
           { label: 'Total', value: workers.length, color: 'from-purple-500 to-fuchsia-500' },
           { label: 'Activos', value: workers.filter(w => w.is_active).length, color: 'from-green-500 to-emerald-500' },
-          { label: 'Estilistas', value: workers.filter(w => w.role === 'estilista').length, color: 'from-violet-500 to-purple-500' },
+          { label: 'Esteticistas', value: workers.filter(w => w.role === 'estilista').length, color: 'from-violet-500 to-purple-500' },
           { label: 'Recepción', value: workers.filter(w => w.role === 'cajero').length, color: 'from-blue-500 to-cyan-500' },
         ].map((stat, i) => (
           <div key={i} className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
@@ -268,7 +268,7 @@ export default function WorkersPage() {
                   ? 'bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white shadow-lg'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}>
-              {role === 'all' ? 'Todos' : role === 'estilista' ? 'Estilistas' : role === 'cajero' ? 'Recepción' : 'Admin'}
+              {role === 'all' ? 'Todos' : role === 'estilista' ? 'Esteticistas' : role === 'cajero' ? 'Recepción' : 'Admin'}
             </button>
           ))}
         </div>
