@@ -253,10 +253,7 @@ export default function Sidebar() {
         ...baseNav,
         { name: 'Clientes', href: '/dashboard/clients', icon: Users },
         citasItem,
-        { name: 'Mis Facturas', href: '/dashboard/invoicing', icon: FileText },
-        { name: 'Mis Reportes', href: '/dashboard/reports', icon: TrendingUp },
         { name: 'Mis Pagos', href: '/dashboard/payroll', icon: Banknote },
-        { name: 'Configuración', href: '/dashboard/settings/profile', icon: Settings },
       ]
     }
 

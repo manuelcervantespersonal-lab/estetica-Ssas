@@ -5,13 +5,6 @@ export async function POST(request: Request) {
   try {
     const { to, subject, html } = await request.json()
 
-    if (!to || !subject || !html) {
-      return NextResponse.json(
-        { error: 'Faltan datos requeridos: to, subject, html' },
-        { status: 400 }
-      )
-    }
-
     if (!process.env.RESEND_API_KEY) {
       return NextResponse.json(
         { error: 'RESEND_API_KEY no está configurada' },
@@ -28,16 +21,11 @@ export async function POST(request: Request) {
       html: html,
     })
 
-    return NextResponse.json({ 
-      success: true, 
-      data,
-      message: 'Email enviado correctamente'
-    })
+    return NextResponse.json({ success: true, data })
 
   } catch (error: any) {
-    console.error('Error al enviar email:', error)
     return NextResponse.json(
-      { error: error.message || 'Error desconocido al enviar email' },
+      { error: error.message },
       { status: 500 }
     )
   }

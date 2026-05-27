@@ -60,11 +60,16 @@ export default function NewAppointmentPage() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { router.push('/login'); return }
 
-    const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+    const { data: profile } = await supabase.from('profiles').select('role, full_name').eq('id', user.id).single()
     setUserId(user.id)
     setUserRole(profile?.role || '')
 
     await Promise.all([loadClients(), loadServices(), loadStylists()])
+
+    // Si es estilista, asignarse automáticamente
+    if (profile?.role === 'estilista') {
+      setSelectedStylist({ id: user.id, full_name: profile.full_name || 'Mi cuenta' })
+    }
   }
 
   const loadClients = async () => {
@@ -147,13 +152,13 @@ export default function NewAppointmentPage() {
   }
 
   const handleSave = async () => {
-    if (!selectedClient || !selectedService || !selectedDate || !selectedSlot || !selectedStylist) return
+    if (!selectedClient || !selectedService || !selectedDate || !selectedSlot) return
     setSaving(true)
 
     const { error } = await supabase.from('appointments').insert({
       client_id: selectedClient.id,
       service_id: selectedService.id,
-      employee_id: selectedStylist.id,
+      employee_id: selectedStylist?.id || userId,
       appointment_date: format(selectedDate, 'yyyy-MM-dd'),
       appointment_time: selectedSlot.time,
       status: 'pending',
@@ -187,7 +192,7 @@ export default function NewAppointmentPage() {
 
   const canProceedStep1 = selectedClient && selectedService
   const canProceedStep2 = selectedDate !== null
-  const canProceedStep3 = selectedSlot && selectedStylist
+  const canProceedStep3 = selectedSlot && (selectedStylist || userRole === 'estilista')
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-purple-50/30 p-8">
@@ -460,8 +465,8 @@ export default function NewAppointmentPage() {
                   })}
                 </div>
 
-                {/* Selección de estilista */}
-                {selectedSlot && (
+                {/* Selección de estilista — solo si NO es estilista */}
+                {selectedSlot && userRole !== 'estilista' && (
                   <div>
                     <h3 className="font-bold text-gray-900 mb-3">
                       Estilistas disponibles a las {selectedSlot.time}:
@@ -501,6 +506,27 @@ export default function NewAppointmentPage() {
                     </div>
                   </div>
                 )}
+
+                {/* Si es estilista: auto-asignada + notas */}
+                {selectedSlot && userRole === 'estilista' && (
+                  <div>
+                    <div className="p-4 bg-purple-50 border border-purple-200 rounded-xl flex items-center gap-3 mb-4">
+                      <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-fuchsia-500 rounded-xl flex items-center justify-center">
+                        <span className="text-white font-bold">{selectedStylist?.full_name.charAt(0)}</span>
+                      </div>
+                      <div>
+                        <p className="font-semibold text-gray-900">{selectedStylist?.full_name}</p>
+                        <p className="text-xs text-purple-600 font-medium">✓ Asignada automáticamente</p>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Notas (opcional)</label>
+                      <textarea value={notes} onChange={(e) => setNotes(e.target.value)}
+                        rows={2} placeholder="Preferencias, observaciones del cliente..."
+                        className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl focus:border-purple-300 outline-none text-sm resize-none" />
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -518,7 +544,7 @@ export default function NewAppointmentPage() {
         )}
 
         {/* STEP 4: Confirmar */}
-        {step === 4 && selectedClient && selectedService && selectedDate && selectedSlot && selectedStylist && (
+        {step === 4 && selectedClient && selectedService && selectedDate && selectedSlot && (
           <div className="p-6 max-w-xl mx-auto">
             <h2 className="text-lg font-bold text-gray-900 mb-6 text-center">Confirmar Cita</h2>
 
@@ -528,7 +554,7 @@ export default function NewAppointmentPage() {
                 { label: 'Servicio', value: `${selectedService.name} (${selectedService.duration_minutes} min)`, icon: <Scissors className="w-4 h-4 text-fuchsia-600" /> },
                 { label: 'Fecha', value: format(selectedDate, "EEEE, d 'de' MMMM 'de' yyyy", { locale: es }), icon: <Calendar className="w-4 h-4 text-blue-600" /> },
                 { label: 'Hora', value: selectedSlot.time, icon: <Clock className="w-4 h-4 text-green-600" /> },
-                { label: 'Estilista', value: selectedStylist.full_name, icon: <User className="w-4 h-4 text-orange-600" /> },
+                { label: 'Estilista', value: selectedStylist?.full_name || 'Asignada automáticamente', icon: <User className="w-4 h-4 text-orange-600" /> },
               ].map(item => (
                 <div key={item.label} className="flex items-center gap-4 p-3 bg-white rounded-xl">
                   <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center shrink-0">
